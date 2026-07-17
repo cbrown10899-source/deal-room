@@ -738,11 +738,40 @@ function renderGate() {
         <div id="pw-err"></div>
         <button type="submit" class="btn primary">Unlock</button>
       </form>
+      <p class="hint" style="margin:.8rem 0 0; text-align:center;"><a href="#" onclick="renderForgot();return false;" style="color:var(--muted);">Forgot your password?</a></p>
       ${demoLink}
     </div>`;
   }
   const el = document.getElementById("pw1");
   if (el) el.focus();
+}
+function renderForgot() {
+  document.body.classList.add("locked");
+  app.innerHTML = `<div class="card gate">
+    <h1 style="margin-top:0;">Forgot your password?</h1>
+    <p class="hint" style="margin-top:0;">There's no reset and no recovery — the password never leaves this device, and nothing (and no one) can decrypt the data without it. That's the cold-wallet design. Before anything drastic, check the two places it might still be:</p>
+    <ul style="margin:0 0 .8rem; padding-left:1.2rem; font-size:.9rem; line-height:1.6;">
+      <li><b>Your password manager.</b> Look for "<b>Deal Room</b>" (or this site's address) in iCloud Keychain, Google Passwords, or whatever saves your logins.</li>
+      <li><b>A backup file.</b> If you ever exported one (Settings → Backup), it holds your deals in readable form — start fresh below, then restore it.</li>
+    </ul>
+    <p class="hint">If neither pans out, the only way forward is to erase this device's data and start over with a new password. The encrypted deals stay unreadable to everyone either way.</p>
+    <div class="row" style="margin-top:.6rem;">
+      <button class="btn danger" onclick="startOver()">Erase everything &amp; start over</button>
+      <button class="btn ghost" onclick="renderGate()">← Back</button>
+    </div>
+  </div>`;
+}
+async function startOver() {
+  const typed = prompt('This permanently erases every deal, note, and file stored on this device. If you have a backup file, you can restore it after setting a new password.\n\nType ERASE to confirm.');
+  if (typed === null) return;
+  if (typed.trim().toUpperCase() !== "ERASE") { toast("Not erased — type ERASE exactly to confirm"); return; }
+  await tx("deals", "readwrite", s => s.clear());
+  await tx("files", "readwrite", s => s.clear());
+  await tx("meta",  "readwrite", s => s.clear());
+  masterKey = null; vaultExists = false;
+  deals = []; currentDealId = null; view = "pipeline";
+  renderGate();
+  toast("Erased — set a new password to start fresh");
 }
 function startDemo() {
   demo = true;
