@@ -9,7 +9,14 @@ The best part: it doesn't need any account, sign-up, or paid key. The scoring is
 done by YOUR OWN CLAUDE. Deal Room organizes the deal and hands it to Claude with
 the right instructions; Claude reads the file and scores it for you.
 
-Two files came with this:
+FASTEST WAY IN — it's already online:
+
+    https://cbrown10899-source.github.io/deal-room/
+
+Just open that link. On your phone, then tap "Add to Home Screen" and it installs
+like a real app. Nothing to download, and it's just as private (see below).
+
+You also got two files, in case you'd rather keep it as a file or host it yourself:
   • "Deal Room.html"  — the app itself. This IS the whole program.
   • "START HERE.txt"  — this note.
 
@@ -17,13 +24,12 @@ Two files came with this:
 OPENING IT — pick whatever's handy
 ----------------------------------
 ON YOUR PHONE (keep it on your home screen like an app):
-  • Open the app in your browser, then use "Add to Home Screen" (Share menu on
-    iPhone; the ⋮ menu on Android). It launches full-screen like a real app.
-  • Home-screen install works most reliably from a hosted link. If you want that,
-    ask the person who sent this to host it for you — it's a 2-minute thing.
+  • Open the link above in Safari (iPhone) or Chrome (Android), then use
+    "Add to Home Screen" (Share menu on iPhone; the ⋮ menu on Android). It
+    launches full-screen like a real app.
 
 ON YOUR COMPUTER:
-  • Just double-click "Deal Room.html" — it opens in your browser and runs offline.
+  • Open the link above, or double-click "Deal Room.html" to run it offline.
   • Use Chrome, Edge, or Safari in a NORMAL (not private/incognito) window, so it
     can save your deals.
 
