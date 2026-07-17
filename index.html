@@ -181,6 +181,10 @@
   }
   .toast.show { opacity: 1; }
   body.locked #lockBtn, body.locked #gearBtn { display: none; }
+  #exitDemoBtn { display: none; }
+  body.demo #exitDemoBtn { display: inline-block; }
+  body.demo #lockBtn, body.demo #gearBtn { display: none; }
+  .demo-banner { background: color-mix(in srgb, var(--series-1) 12%, transparent); border: 1px solid var(--series-1); border-radius: 12px; padding: .7rem .9rem; margin-bottom: 1rem; font-size: .85rem; }
   .gate { max-width: 26rem; margin: 2.5rem auto; }
   .reliability { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: -.3rem 0 1rem; }
   .rel-badge { font-size: .74rem; font-weight: 700; border: 1px solid; border-radius: 999px; padding: .12rem .55rem; }
@@ -195,6 +199,7 @@
 <header class="topbar">
   <div class="brand" onclick="go('pipeline')">Deal Room<small>private deal vetting</small></div>
   <div class="spacer"></div>
+  <button class="btn small" id="exitDemoBtn" onclick="exitDemo()">Exit demo</button>
   <button class="btn ghost" id="lockBtn" onclick="lockNow()" title="Lock">🔒</button>
   <button class="btn ghost" id="gearBtn" onclick="go('settings')" title="Settings">⚙︎</button>
 </header>
@@ -447,6 +452,7 @@ let deals = [];
 let view = "pipeline";
 let currentDealId = null;
 let saveTimer = null;
+let demo = false;   // in-memory sample-data mode: no password, nothing persisted
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -467,6 +473,7 @@ function getDeal(id) { return deals.find(d => d.id === id); }
 const pendingSaves = new Map();  // id -> deal, so a debounced write is never dropped by another deal's edit
 function saveDeal(deal, immediate) {
   deal.updatedAt = Date.now();
+  if (demo) return;   // demo edits stay in memory only — never written to storage
   if (immediate) { pendingSaves.delete(deal.id); return putDeal(deal); }
   pendingSaves.set(deal.id, deal);
   clearTimeout(saveTimer);
@@ -648,14 +655,14 @@ function normalizeAnalysis(o) {
 
 const app = document.getElementById("app");
 function go(v, id) {
-  if (!masterKey) { renderGate(); return; }
+  if (!masterKey && !demo) { renderGate(); return; }
   view = v;
   if (id !== undefined) currentDealId = id;
   render();
   window.scrollTo(0, 0);
 }
 function render() {
-  if (!masterKey) { renderGate(); return; }
+  if (!masterKey && !demo) { renderGate(); return; }
   document.body.classList.remove("locked");
   if (view === "pipeline") renderPipeline();
   else if (view === "deal") renderDeal();
@@ -665,11 +672,14 @@ function render() {
 
 /* ---- lock / unlock / first-run setup ---- */
 const gateErr = m => `<div class="flagbox" style="margin:.2rem 0 .6rem;"><b>${esc(m)}</b></div>`;
+const demoLink = `<p class="hint" style="margin:.9rem 0 0; text-align:center;">New here? <a href="#" onclick="startDemo();return false;" style="color:var(--series-1);">Explore a live demo</a> — five sample deals, no password, nothing saved.</p>`;
 function renderGate() {
+  document.body.classList.remove("demo");
   document.body.classList.add("locked");
   if (!cryptoOK()) {
     app.innerHTML = `<div class="card gate"><h1 style="margin-top:0;">Encryption unavailable</h1>
-      <p class="hint">Deal Room encrypts your data with the browser's Web Crypto API, which needs a secure context. Open this file directly (a <code>file://</code> path) or host it over <b>https</b> — a plain <code>http://</code> address won't work.</p></div>`;
+      <p class="hint">Deal Room encrypts your data with the browser's Web Crypto API, which needs a secure context. Open this file directly (a <code>file://</code> path) or host it over <b>https</b> — a plain <code>http://</code> address won't work.</p>
+      ${demoLink}</div>`;
     return;
   }
   if (!vaultExists) {
@@ -682,6 +692,7 @@ function renderGate() {
         <input type="password" id="pw2" autocomplete="new-password" placeholder="Type it again" onkeydown="if(event.key==='Enter')doSetup()"></label>
       <div id="pw-err"></div>
       <button class="btn primary" onclick="doSetup()">Encrypt &amp; continue</button>
+      ${demoLink}
     </div>`;
   } else {
     app.innerHTML = `<div class="card gate">
@@ -691,10 +702,29 @@ function renderGate() {
         <input type="password" id="pw1" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')doUnlock()"></label>
       <div id="pw-err"></div>
       <button class="btn primary" onclick="doUnlock()">Unlock</button>
+      ${demoLink}
     </div>`;
   }
   const el = document.getElementById("pw1");
   if (el) el.focus();
+}
+function startDemo() {
+  demo = true;
+  deals = JSON.parse(JSON.stringify(DEMO_DEALS));   // in-memory only — never written to storage
+  const now = Date.now();
+  deals.forEach((d, i) => { d.createdAt = d.updatedAt = now - i; });   // keep a stable display order
+  currentDealId = null; view = "pipeline";
+  document.body.classList.remove("locked");
+  document.body.classList.add("demo");
+  render();
+  window.scrollTo(0, 0);
+}
+function exitDemo() {
+  demo = false;
+  deals = [];
+  currentDealId = null; view = "pipeline";
+  document.body.classList.remove("demo");
+  renderGate();
 }
 async function doSetup() {
   const p1 = document.getElementById("pw1").value, p2 = document.getElementById("pw2").value;
@@ -705,23 +735,9 @@ async function doSetup() {
     await createVault(p1);
     await migrateLegacy();
     deals = await loadDeals();
-    await maybeSeedDemo();
     go("pipeline");
     toast("Encrypted — you're all set");
   } catch { err.innerHTML = gateErr("Couldn't set up encryption here."); }
-}
-async function maybeSeedDemo() {
-  if (!DEMO_MODE) return;
-  let added = 0;
-  for (const d of DEMO_DEALS) {
-    if (deals.some(x => x.id === d.id)) continue;   // already seeded — don't duplicate
-    const copy = JSON.parse(JSON.stringify(d));
-    copy.createdAt = copy.updatedAt = Date.now();
-    deals.push(copy);
-    await putDeal(copy);
-    added++;
-  }
-  if (added) toast(added + " sample deals loaded");
 }
 async function doUnlock() {
   const el = document.getElementById("pw1"), err = document.getElementById("pw-err");
@@ -730,7 +746,6 @@ async function doUnlock() {
   try {
     await unlockVault(pw);
     deals = await loadDeals();
-    await maybeSeedDemo();
     go("pipeline");
   } catch {
     err.innerHTML = gateErr("Wrong password.");
@@ -774,7 +789,9 @@ function renderPipeline() {
         }).join("") + `</div>`;
     }
   }
+  const banner = demo ? `<div class="demo-banner"><b>Demo — sample deals.</b> Nothing here is saved. Browse the reports to see what Deal Room does, then <a href="#" onclick="exitDemo();return false;" style="color:var(--series-1);">set up your own private copy</a>.</div>` : "";
   app.innerHTML = `
+    ${banner}
     <div class="row" style="margin-bottom:1rem; justify-content:space-between;">
       <h1 style="margin:0;">Pipeline</h1>
       <button class="btn primary" onclick="go('newdeal')">+ New deal</button>
@@ -1041,6 +1058,7 @@ function dzDrop(e) {
 async function storeFiles(fileList) {
   const d = getDeal(currentDealId);
   if (!d) return;
+  if (demo) { toast("Set up the app to add your own files"); return; }
   let added = 0;
   for (const file of fileList) {
     if (file.size > 25 * 1048576) { toast(`${file.name} is over 25 MB — skipped`); continue; }
@@ -1224,7 +1242,8 @@ function toast(msg) {
   try {
     _db = await openDB();
     vaultExists = !!(await getVault());
-    renderGate();     // sets up a password on first run, otherwise asks to unlock
+    if (DEMO_MODE) startDemo();   // ?demo=1 opens straight into the sample data
+    else renderGate();            // otherwise set up a password on first run, or ask to unlock
   } catch (e) {
     app.innerHTML = `<div class="card">
       <h2>Storage unavailable</h2>
