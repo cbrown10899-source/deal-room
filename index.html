@@ -94,7 +94,7 @@
 
   label.field { display: block; margin-bottom: .8rem; font-size: .85rem; color: var(--ink-2); }
   label.field > span { display: block; margin-bottom: .25rem; font-weight: 600; color: var(--ink); }
-  input[type=text], select, textarea {
+  input[type=text], input[type=password], select, textarea {
     font: inherit; width: 100%;
     background: var(--page); color: var(--ink);
     border: 1px solid var(--border); border-radius: 8px;
@@ -180,6 +180,8 @@
     opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 50; max-width: 90vw; text-align: center;
   }
   .toast.show { opacity: 1; }
+  body.locked #lockBtn, body.locked #gearBtn { display: none; }
+  .gate { max-width: 26rem; margin: 2.5rem auto; }
   @media (max-width: 540px) {
     .meter .m-label { flex-basis: 7.5rem; }
     main { padding: .75rem; }
@@ -191,7 +193,8 @@
 <header class="topbar">
   <div class="brand" onclick="go('pipeline')">Deal Room<small>private deal vetting</small></div>
   <div class="spacer"></div>
-  <button class="btn ghost" onclick="go('settings')" title="Settings">⚙︎</button>
+  <button class="btn ghost" id="lockBtn" onclick="lockNow()" title="Lock">🔒</button>
+  <button class="btn ghost" id="gearBtn" onclick="go('settings')" title="Settings">⚙︎</button>
 </header>
 
 <main id="app"></main>
@@ -286,11 +289,12 @@ const CRIT_KEYS = CATEGORIES.flatMap(c => c.criteria.map(x => c.id + "." + x.id)
 let _db = null;
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("deal-room", 1);
+    const req = indexedDB.open("deal-room", 2);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains("deals")) db.createObjectStore("deals", { keyPath: "id" });
       if (!db.objectStoreNames.contains("files")) db.createObjectStore("files", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("meta"))  db.createObjectStore("meta",  { keyPath: "k" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -307,6 +311,124 @@ function tx(store, mode, fn) {
 const dbPut    = (store, val) => tx(store, "readwrite", s => s.put(val));
 const dbDelete = (store, key) => tx(store, "readwrite", s => s.delete(key));
 const dbAll    = (store)      => tx(store, "readonly",  s => s.getAll());
+
+/* ================= Encryption =================
+   Envelope scheme: the password derives a wrapping key (PBKDF2) that unwraps a
+   random per-vault master key (AES-GCM). Every deal and file is encrypted with
+   the master key. The master key lives only in memory (masterKey) — never on
+   disk in the clear, never persisted — so locking or reloading re-requires the
+   password. Changing the password only re-wraps the master key, not the data.
+   IndexedDB stores typed arrays / ArrayBuffers natively, so ciphertext is kept
+   as { iv, ct } with no base64 round-trip. */
+
+const te = new TextEncoder(), td = new TextDecoder();
+const PBKDF2_ITERS = 250000;
+let masterKey = null;     // CryptoKey (AES-GCM), in-memory only; null ⇒ locked
+let vaultExists = false;
+
+const cryptoOK = () => !!(window.crypto && crypto.subtle && crypto.subtle.deriveKey);
+const randBytes = n => crypto.getRandomValues(new Uint8Array(n));
+const getVault = () => tx("meta", "readonly",  s => s.get("vault"));
+const putVault = v  => tx("meta", "readwrite", s => s.put(v));
+
+async function deriveWrapKey(password, salt) {
+  const base = await crypto.subtle.importKey("raw", te.encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: PBKDF2_ITERS, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, false, ["wrapKey", "unwrapKey"]);
+}
+async function createVault(password) {
+  const salt = randBytes(16), wrapIv = randBytes(12);
+  const wrapKey = await deriveWrapKey(password, salt);
+  const mk = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+  const wrapped = await crypto.subtle.wrapKey("raw", mk, wrapKey, { name: "AES-GCM", iv: wrapIv });
+  await putVault({ k: "vault", salt, wrapIv, wrapped, iters: PBKDF2_ITERS });
+  masterKey = mk; vaultExists = true;
+}
+async function unlockVault(password) {
+  const v = await getVault();
+  if (!v) throw new Error("no vault");
+  const wrapKey = await deriveWrapKey(password, v.salt);
+  // A wrong password fails GCM authentication and unwrapKey throws — that is the check.
+  masterKey = await crypto.subtle.unwrapKey(
+    "raw", v.wrapped, wrapKey, { name: "AES-GCM", iv: v.wrapIv },
+    { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+}
+async function changePassword(currentPw, newPw) {
+  const v = await getVault();
+  const curWrap = await deriveWrapKey(currentPw, v.salt);
+  // Verify the current password by actually unwrapping (throws if wrong).
+  const mk = await crypto.subtle.unwrapKey(
+    "raw", v.wrapped, curWrap, { name: "AES-GCM", iv: v.wrapIv },
+    { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+  const salt = randBytes(16), wrapIv = randBytes(12);
+  const newWrap = await deriveWrapKey(newPw, salt);
+  const wrapped = await crypto.subtle.wrapKey("raw", mk, newWrap, { name: "AES-GCM", iv: wrapIv });
+  await putVault({ k: "vault", salt, wrapIv, wrapped, iters: PBKDF2_ITERS });
+  masterKey = mk;
+}
+
+async function encObj(obj) {
+  const iv = randBytes(12);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, masterKey, te.encode(JSON.stringify(obj)));
+  return { iv, ct };
+}
+async function decObj(enc) {
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: enc.iv }, masterKey, enc.ct);
+  return JSON.parse(td.decode(pt));
+}
+async function encBlob(blob) {
+  const iv = randBytes(12);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, masterKey, await blob.arrayBuffer());
+  return { iv, ct };
+}
+async function decBlob(enc, type) {
+  const buf = await crypto.subtle.decrypt({ name: "AES-GCM", iv: enc.iv }, masterKey, enc.ct);
+  return new Blob([buf], { type: type || "application/octet-stream" });
+}
+
+/* ---- crypto-aware storage: records are { id, enc } / { id, dealId, meta, blob } ---- */
+async function putDeal(deal) { return dbPut("deals", { id: deal.id, enc: await encObj(deal) }); }
+async function loadDeals() {
+  const out = [];
+  for (const r of await dbAll("deals")) {
+    if (!r || !r.enc) continue;
+    try { out.push(await decObj(r.enc)); } catch { /* not decryptable with this key — skip */ }
+  }
+  return out;
+}
+async function putFile(dealId, file) {
+  const meta = await encObj({ name: file.name, type: file.type, size: file.size, addedAt: Date.now() });
+  const blob = await encBlob(file);
+  return dbPut("files", { id: uid(), dealId, meta, blob });
+}
+const fileRowsForDeal = async dealId => (await dbAll("files")).filter(r => r.dealId === dealId);
+async function loadFileMetas(dealId) {
+  const out = [];
+  for (const r of await fileRowsForDeal(dealId)) {
+    try { out.push({ id: r.id, dealId: r.dealId, ...(await decObj(r.meta)) }); } catch {}
+  }
+  return out.sort((a, b) => b.addedAt - a.addedAt);
+}
+async function loadFileFull(id) {
+  const r = (await dbAll("files")).find(x => x.id === id);
+  if (!r) return null;
+  const m = await decObj(r.meta);
+  return { id: r.id, name: m.name, type: m.type, blob: await decBlob(r.blob, m.type) };
+}
+
+/* One-time migration: encrypt any v1 plaintext records once a master key exists. */
+async function migrateLegacy() {
+  for (const r of await dbAll("deals")) {
+    if (r && !r.enc && r.name !== undefined) await dbPut("deals", { id: r.id, enc: await encObj(r) });
+  }
+  for (const r of await dbAll("files")) {
+    if (r && !r.meta && r.name !== undefined) {
+      const meta = await encObj({ name: r.name, type: r.type, size: r.size, addedAt: r.addedAt || Date.now() });
+      await dbPut("files", { id: r.id, dealId: r.dealId, meta, blob: await encBlob(r.blob) });
+    }
+  }
+}
 
 /* ================= State & helpers ================= */
 
@@ -334,16 +456,16 @@ function getDeal(id) { return deals.find(d => d.id === id); }
 const pendingSaves = new Map();  // id -> deal, so a debounced write is never dropped by another deal's edit
 function saveDeal(deal, immediate) {
   deal.updatedAt = Date.now();
-  if (immediate) { pendingSaves.delete(deal.id); return dbPut("deals", deal); }
+  if (immediate) { pendingSaves.delete(deal.id); return putDeal(deal); }
   pendingSaves.set(deal.id, deal);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushSaves, 400);
 }
-function flushSaves() {
+async function flushSaves() {
   clearTimeout(saveTimer); saveTimer = null;
   const items = [...pendingSaves.values()];
   pendingSaves.clear();
-  for (const d of items) dbPut("deals", d);
+  for (const d of items) await putDeal(d);
 }
 window.addEventListener("beforeunload", () => { if (pendingSaves.size) flushSaves(); });
 
@@ -473,16 +595,85 @@ function normalizeAnalysis(o) {
 
 const app = document.getElementById("app");
 function go(v, id) {
+  if (!masterKey) { renderGate(); return; }
   view = v;
   if (id !== undefined) currentDealId = id;
   render();
   window.scrollTo(0, 0);
 }
 function render() {
+  if (!masterKey) { renderGate(); return; }
+  document.body.classList.remove("locked");
   if (view === "pipeline") renderPipeline();
   else if (view === "deal") renderDeal();
   else if (view === "settings") renderSettings();
   else if (view === "newdeal") renderNewDeal();
+}
+
+/* ---- lock / unlock / first-run setup ---- */
+const gateErr = m => `<div class="flagbox" style="margin:.2rem 0 .6rem;"><b>${esc(m)}</b></div>`;
+function renderGate() {
+  document.body.classList.add("locked");
+  if (!cryptoOK()) {
+    app.innerHTML = `<div class="card gate"><h1 style="margin-top:0;">Encryption unavailable</h1>
+      <p class="hint">Deal Room encrypts your data with the browser's Web Crypto API, which needs a secure context. Open this file directly (a <code>file://</code> path) or host it over <b>https</b> — a plain <code>http://</code> address won't work.</p></div>`;
+    return;
+  }
+  if (!vaultExists) {
+    app.innerHTML = `<div class="card gate">
+      <h1 style="margin-top:0;">Set a password</h1>
+      <p class="hint" style="margin-top:0;">Deal Room encrypts every deal, note, and file on this device with this password. It never leaves your browser and there's no reset — <b>if you forget it, the data can't be recovered.</b> Keep a backup (Settings → Backup) as your recovery copy.</p>
+      <label class="field"><span>New password</span>
+        <input type="password" id="pw1" autocomplete="new-password" placeholder="Choose a strong password" onkeydown="if(event.key==='Enter')doSetup()"></label>
+      <label class="field"><span>Confirm password</span>
+        <input type="password" id="pw2" autocomplete="new-password" placeholder="Type it again" onkeydown="if(event.key==='Enter')doSetup()"></label>
+      <div id="pw-err"></div>
+      <button class="btn primary" onclick="doSetup()">Encrypt &amp; continue</button>
+    </div>`;
+  } else {
+    app.innerHTML = `<div class="card gate">
+      <h1 style="margin-top:0;">Locked</h1>
+      <p class="hint" style="margin-top:0;">Enter your password to unlock Deal Room.</p>
+      <label class="field"><span>Password</span>
+        <input type="password" id="pw1" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')doUnlock()"></label>
+      <div id="pw-err"></div>
+      <button class="btn primary" onclick="doUnlock()">Unlock</button>
+    </div>`;
+  }
+  const el = document.getElementById("pw1");
+  if (el) el.focus();
+}
+async function doSetup() {
+  const p1 = document.getElementById("pw1").value, p2 = document.getElementById("pw2").value;
+  const err = document.getElementById("pw-err");
+  if (p1.length < 8) { err.innerHTML = gateErr("Use at least 8 characters."); return; }
+  if (p1 !== p2)     { err.innerHTML = gateErr("The two passwords don't match."); return; }
+  try {
+    await createVault(p1);
+    await migrateLegacy();
+    deals = await loadDeals();
+    go("pipeline");
+    toast("Encrypted — you're all set");
+  } catch { err.innerHTML = gateErr("Couldn't set up encryption here."); }
+}
+async function doUnlock() {
+  const el = document.getElementById("pw1"), err = document.getElementById("pw-err");
+  const pw = el.value;
+  if (!pw) return;
+  try {
+    await unlockVault(pw);
+    deals = await loadDeals();
+    go("pipeline");
+  } catch {
+    err.innerHTML = gateErr("Wrong password.");
+    el.value = ""; el.focus();
+  }
+}
+async function lockNow() {
+  await flushSaves();      // finish any pending encrypted writes before dropping the key
+  masterKey = null;
+  deals = []; currentDealId = null; view = "pipeline";
+  renderGate();
 }
 function gradePill(g) {
   if (!g || g.score === null) return `<span class="grade-pill g-none">—</span>`;
@@ -556,8 +747,7 @@ async function createDeal() {
 async function renderDeal() {
   const d = getDeal(currentDealId);
   if (!d) { go("pipeline"); return; }
-  const all = await dbAll("files");
-  const files = all.filter(f => f.dealId === d.id).sort((a, b) => b.addedAt - a.addedAt);
+  const files = await loadFileMetas(d.id);
   const t = DEAL_TYPES.find(t => t.id === d.type);
   app.innerHTML = `
     <div class="row" style="justify-content:space-between; margin-bottom:.4rem;">
@@ -626,10 +816,13 @@ function sendToClaude() {
 async function shareFiles() {
   const d = getDeal(currentDealId);
   if (!d) return;
-  const all = await dbAll("files");
-  const recs = all.filter(f => f.dealId === d.id);
-  if (!recs.length) { toast("No files to send — add one first"); return; }
-  const files = recs.map(f => new File([f.blob], f.name, { type: f.type || "application/octet-stream" }));
+  const rows = await fileRowsForDeal(d.id);
+  if (!rows.length) { toast("No files to send — add one first"); return; }
+  const files = [];
+  for (const r of rows) {
+    const m = await decObj(r.meta);
+    files.push(new File([await decBlob(r.blob, m.type)], m.name, { type: m.type || "application/octet-stream" }));
+  }
   try {
     if (navigator.canShare && navigator.canShare({ files })) {
       await navigator.share({ files, title: d.name, text: "Deal materials for " + d.name });
@@ -749,7 +942,7 @@ async function storeFiles(fileList) {
   let added = 0;
   for (const file of fileList) {
     if (file.size > 25 * 1048576) { toast(`${file.name} is over 25 MB — skipped`); continue; }
-    await dbPut("files", { id: uid(), dealId: d.id, name: file.name, type: file.type, size: file.size, blob: file, addedAt: Date.now() });
+    await putFile(d.id, file);
     added++;
   }
   if (added) toast(added + " file" + (added > 1 ? "s" : "") + " added");
@@ -760,8 +953,7 @@ document.getElementById("fileAttach").addEventListener("change", e => {
   e.target.value = "";
 });
 async function openFile(id) {
-  const all = await dbAll("files");
-  const f = all.find(x => x.id === id);
+  const f = await loadFileFull(id);
   if (!f) return;
   const url = URL.createObjectURL(f.blob);
   window.open(url, "_blank");
@@ -775,8 +967,7 @@ async function removeFile(id) {
 async function deleteDeal(id) {
   const d = getDeal(id);
   if (!confirm(`Delete "${d.name}" and its files? This can't be undone.`)) return;
-  const all = await dbAll("files");
-  for (const f of all.filter(f => f.dealId === id)) await dbDelete("files", f.id);
+  for (const r of await fileRowsForDeal(id)) await dbDelete("files", r.id);
   await dbDelete("deals", id);
   deals = deals.filter(x => x.id !== id);
   go("pipeline");
@@ -788,8 +979,25 @@ function renderSettings() {
   app.innerHTML = `
     <h1>Settings</h1>
     <div class="card">
+      <h2>Security</h2>
+      <p class="hint" style="margin-top:0;">Your deals, notes, and files are encrypted on this device (AES-GCM) with your password. The key is held only in memory — locking or closing the tab requires the password again.</p>
+      <div class="row" style="margin-bottom:1rem;">
+        <button class="btn" onclick="lockNow()">🔒 Lock now</button>
+      </div>
+      <h3>Change password</h3>
+      <label class="field"><span>Current password</span>
+        <input type="password" id="cp-cur" autocomplete="current-password"></label>
+      <label class="field"><span>New password</span>
+        <input type="password" id="cp-new" autocomplete="new-password"></label>
+      <label class="field"><span>Confirm new password</span>
+        <input type="password" id="cp-new2" autocomplete="new-password"></label>
+      <div id="cp-err"></div>
+      <button class="btn primary" onclick="doChangePw()">Update password</button>
+      <p class="hint" style="margin-bottom:0;">There's no reset — if you forget it, the data can't be recovered. Keep a current backup as your recovery copy.</p>
+    </div>
+    <div class="card">
       <h2>How Deal Room works</h2>
-      <p class="hint" style="margin-top:0;">A private workbench for vetting deals against the checklist prominent family offices use. There's no account, no server, and no AI cost — the analysis runs inside <b>your own Claude</b>. Your deals and files stay in this browser.</p>
+      <p class="hint" style="margin-top:0;">A private workbench for vetting deals against the checklist prominent family offices use. There's no account, no server, and no AI cost — the analysis runs inside <b>your own Claude</b>. Your deals and files stay in this browser, encrypted with your password.</p>
       <ol style="margin:0; padding-left:1.2rem; font-size:.9rem; line-height:1.6;">
         <li><b>New deal</b> → name it and pick a type (that sets the scorecard weighting).</li>
         <li><b>Add the raise files</b> — drop in the pitch deck, financials, or term sheet.</li>
@@ -821,8 +1029,21 @@ function renderSettings() {
         <button class="btn" onclick="exportBackup()">Export all deals</button>
         <button class="btn" onclick="document.getElementById('fileImportBackup').click()">Restore backup</button>
       </div>
-      <p class="hint" style="margin-bottom:0;">Saves every deal, note, and saved report to one file (the attached raise files stay on-device — they aren't in the backup). Your data lives in this browser's storage, so back up occasionally: clearing site data clears the app.</p>
+      <p class="hint" style="margin-bottom:0;">Saves every deal, note, and saved report to one file (the attached raise files stay on-device — they aren't in the backup). This is also your <b>recovery copy</b>: if you ever forget your password, the encrypted on-device data can't be recovered, but a backup restores your deals into a fresh password. The backup file itself is <b>not encrypted</b> — store it somewhere safe.</p>
     </div>`;
+}
+async function doChangePw() {
+  const cur = document.getElementById("cp-cur").value;
+  const n1 = document.getElementById("cp-new").value, n2 = document.getElementById("cp-new2").value;
+  const err = document.getElementById("cp-err");
+  if (n1.length < 8) { err.innerHTML = gateErr("New password: at least 8 characters."); return; }
+  if (n1 !== n2)     { err.innerHTML = gateErr("New passwords don't match."); return; }
+  try {
+    await changePassword(cur, n1);
+    err.innerHTML = "";
+    ["cp-cur", "cp-new", "cp-new2"].forEach(id => document.getElementById(id).value = "");
+    toast("Password updated");
+  } catch { err.innerHTML = gateErr("Current password is wrong."); }
 }
 function download(name, obj) {
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
@@ -849,7 +1070,7 @@ document.getElementById("fileImportBackup").addEventListener("change", async e =
       d.id = safeId(d.id);
       const i = deals.findIndex(x => x.id === d.id);
       if (i >= 0) deals[i] = d; else deals.push(d);
-      await dbPut("deals", d);
+      await putDeal(d);
     }
     toast("Backup restored");
     go("pipeline");
@@ -900,8 +1121,8 @@ function toast(msg) {
 (async function init() {
   try {
     _db = await openDB();
-    deals = await dbAll("deals");
-    render();
+    vaultExists = !!(await getVault());
+    renderGate();     // sets up a password on first run, otherwise asks to unlock
   } catch (e) {
     app.innerHTML = `<div class="card">
       <h2>Storage unavailable</h2>
