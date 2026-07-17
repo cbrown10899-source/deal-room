@@ -685,7 +685,8 @@ function renderGate() {
   if (!vaultExists) {
     app.innerHTML = `<div class="card gate">
       <h1 style="margin-top:0;">Set a password</h1>
-      <p class="hint" style="margin-top:0;">Deal Room encrypts every deal, note, and file on this device with this password. It never leaves your browser and there's no reset — <b>if you forget it, the data can't be recovered.</b> Keep a backup (Settings → Backup) as your recovery copy.</p>
+      <p style="margin:.1rem 0 .7rem; font-size:.92rem;">Think of it as a <b>cold wallet for deal vetting</b> — your deals sit locked on this device, under a key only you hold. No server, no account, no company that can see them.</p>
+      <p class="hint" style="margin-top:0;">Your password is that key: it encrypts every deal, note, and file here and never leaves your browser. There's no reset — <b>if you forget it, the data can't be recovered</b> — so keep a backup (Settings → Backup) as your recovery copy.</p>
       <label class="field"><span>New password</span>
         <input type="password" id="pw1" autocomplete="new-password" placeholder="Choose a strong password" onkeydown="if(event.key==='Enter')doSetup()"></label>
       <label class="field"><span>Confirm password</span>
