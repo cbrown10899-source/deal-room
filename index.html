@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Deal Room">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%232a78d6'/%3E%3Ctext x='256' y='340' font-family='system-ui,sans-serif' font-size='260' font-weight='700' fill='%23fff' text-anchor='middle'%3EDR%3C/text%3E%3C/svg%3E">
+<title>Deal Room</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:      #f9f9f7;
+    --surface:   #fcfcfb;
+    --ink:       #0b0b0b;
+    --ink-2:     #52514e;
+    --muted:     #898781;
+    --hairline:  #e1e0d9;
+    --border:    rgba(11,11,11,0.10);
+    --track:     #f0efec;
+    --series-1:  #2a78d6;
+    --series-2:  #1baf7a;
+    --good:      #0ca30c;
+    --warning:   #fab219;
+    --serious:   #ec835a;
+    --critical:  #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page:      #0d0d0d;
+      --surface:   #1a1a19;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --muted:     #898781;
+      --hairline:  #2c2c2a;
+      --border:    rgba(255,255,255,0.10);
+      --track:     #383835;
+      --series-1:  #3987e5;
+      --series-2:  #199e70;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding-bottom: 4rem;
+    -webkit-text-size-adjust: 100%;
+  }
+  header.topbar {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--page);
+    border-bottom: 1px solid var(--hairline);
+    padding: .7rem 1rem; padding-top: calc(.7rem + env(safe-area-inset-top));
+    display: flex; align-items: center; gap: .75rem;
+  }
+  .brand { font-weight: 700; letter-spacing: .01em; cursor: pointer; user-select: none; }
+  .brand small { display: block; font-size: .68rem; font-weight: 400; color: var(--muted); letter-spacing: .02em; }
+  .topbar .spacer { flex: 1; }
+  main { max-width: 820px; margin: 0 auto; padding: 1rem; }
+
+  .btn {
+    font: inherit; font-size: .9rem; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--ink);
+    padding: .55rem .9rem;
+  }
+  .btn:hover { border-color: var(--muted); }
+  .btn.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+  .btn.danger  { color: var(--critical); border-color: var(--critical); background: transparent; }
+  .btn.small   { font-size: .8rem; padding: .3rem .65rem; }
+  .btn.ghost   { border-color: transparent; background: transparent; color: var(--ink-2); }
+  .btn.ghost:hover { border-color: var(--border); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+  details.card > summary { list-style: none; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  h1 { font-size: 1.35rem; margin: .2rem 0 1rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 .6rem; }
+  h3 { font-size: .95rem; margin: 0 0 .4rem; }
+  p.hint, .hint { color: var(--muted); font-size: .82rem; }
+
+  label.field { display: block; margin-bottom: .8rem; font-size: .85rem; color: var(--ink-2); }
+  label.field > span { display: block; margin-bottom: .25rem; font-weight: 600; color: var(--ink); }
+  input[type=text], select, textarea {
+    font: inherit; width: 100%;
+    background: var(--page); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .6rem .7rem;
+  }
+  textarea { min-height: 6rem; resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+
+  .deal-row {
+    display: flex; align-items: center; gap: .8rem;
+    padding: .85rem .2rem; border-bottom: 1px solid var(--hairline); cursor: pointer;
+  }
+  .deal-row:last-child { border-bottom: none; }
+  .deal-row:hover { background: var(--track); border-radius: 8px; }
+  .deal-row .deal-name { font-weight: 600; }
+  .deal-row .deal-sub { font-size: .8rem; color: var(--muted); }
+
+  .chip {
+    display: inline-block; font-size: .74rem; font-weight: 600;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: .12rem .55rem; color: var(--ink-2); white-space: nowrap;
+  }
+  .grade-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 2.3rem; height: 2.3rem; padding: 0 .4rem; margin-left: auto;
+    border-radius: 8px; font-weight: 700; font-size: 1.05rem; color: #fff; flex: none;
+  }
+  .grade-pill.g-A { background: var(--good); }
+  .grade-pill.g-B { background: var(--warning); color: #0b0b0b; }
+  .grade-pill.g-C { background: var(--serious); color: #0b0b0b; }
+  .grade-pill.g-D, .grade-pill.g-F { background: var(--critical); }
+  .grade-pill.g-none { background: var(--track); color: var(--muted); font-size: .8rem; }
+
+  /* dropzone */
+  .dropzone {
+    border: 2px dashed var(--border); border-radius: 12px;
+    padding: 1.7rem 1rem; text-align: center; color: var(--ink-2);
+    cursor: pointer; transition: border-color .15s, background .15s; margin-bottom: .8rem;
+  }
+  .dropzone:hover { border-color: var(--muted); }
+  .dropzone.drag { border-color: var(--series-1); background: color-mix(in srgb, var(--series-1) 8%, transparent); }
+  .dropzone .dz-big { font-weight: 600; color: var(--ink); display: block; margin-bottom: .15rem; }
+
+  ol.steps { margin: .2rem 0 0; padding-left: 1.2rem; }
+  ol.steps > li { margin-bottom: .9rem; }
+
+  .meter { display: flex; align-items: center; gap: .6rem; margin: .3rem 0; }
+  .meter .m-label { flex: 0 0 9.5rem; font-size: .82rem; color: var(--ink-2); }
+  .meter .m-track { flex: 1; height: 10px; background: var(--track); border-radius: 4px; overflow: hidden; }
+  .meter .m-fill  { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--series-1); }
+  .meter .m-val { flex: 0 0 2.6rem; text-align: right; font-size: .82rem; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+
+  .verdict {
+    display: flex; align-items: center; gap: .9rem;
+    padding: .9rem 1rem; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface); margin-bottom: 1rem;
+  }
+  .verdict .v-text b { display: block; }
+  .verdict .v-text .hint { margin: 0; }
+  .flagbox { border: 1px solid var(--critical); border-radius: 10px; padding: .6rem .8rem; margin: .8rem 0; font-size: .85rem; }
+  .flagbox b { color: var(--critical); }
+
+  .crit { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .5rem 0; border-bottom: 1px solid var(--hairline); }
+  .crit:last-child { border-bottom: none; }
+  .crit .crit-label { flex: 1 1 14rem; font-size: .9rem; }
+  .crit .crit-hint { display: block; font-size: .75rem; color: var(--muted); }
+
+  table.cmp { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  table.cmp td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+
+  .file-row { display: flex; align-items: center; gap: .7rem; padding: .55rem 0; border-bottom: 1px solid var(--hairline); }
+  .file-row:last-child { border-bottom: none; }
+  .file-row .f-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+  .file-row .f-meta { font-size: .75rem; color: var(--muted); flex: none; }
+
+  .empty { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
+  .row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(1.2rem + env(safe-area-inset-bottom));
+    background: var(--ink); color: var(--page);
+    padding: .5rem .9rem; border-radius: 999px; font-size: .85rem;
+    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 50; max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; }
+  @media (max-width: 540px) {
+    .meter .m-label { flex-basis: 7.5rem; }
+    main { padding: .75rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand" onclick="go('pipeline')">Deal Room<small>private deal vetting</small></div>
+  <div class="spacer"></div>
+  <button class="btn ghost" onclick="go('settings')" title="Settings">⚙︎</button>
+</header>
+
+<main id="app"></main>
+<div class="toast" id="toast"></div>
+
+<input type="file" id="fileAttach" hidden multiple>
+<input type="file" id="fileImportBackup" hidden accept=".json,application/json">
+
+<script>
+"use strict";
+
+/* ================= Family-office scorecard framework ================= */
+
+const CATEGORIES = [
+  { id: "people", name: "The People", blurb: "Family offices underwrite the operator before the deal.",
+    criteria: [
+      { id: "track",   name: "Track record",            hint: "1 = first attempt, unverifiable · 5 = has done exactly this before, results you can verify" },
+      { id: "skin",    name: "Skin in the game",        hint: "1 = other people's money only · 5 = meaningful personal capital at risk alongside yours" },
+      { id: "integ",   name: "Integrity & references",  hint: "1 = only sponsor-supplied references · 5 = independent references and background check out clean" },
+      { id: "transp",  name: "Transparency",            hint: "1 = stories and deflection · 5 = answers hard questions with documents and data" },
+    ]},
+  { id: "business", name: "Business & Market", blurb: "Would this business exist and thrive without the pitch?",
+    criteria: [
+      { id: "demand",  name: "Demand durability",       hint: "1 = fad or hype-driven · 5 = need that persists through a downturn" },
+      { id: "moat",    name: "Competitive moat",        hint: "1 = anyone can copy it tomorrow · 5 = durable advantage (brand, contracts, location, switching costs)" },
+      { id: "market",  name: "Market size & headroom",  hint: "1 = tiny or shrinking market · 5 = large market with room to grow" },
+      { id: "unit",    name: "Unit economics",          hint: "1 = loses money per unit, unclear path · 5 = clearly profitable per unit today" },
+    ]},
+  { id: "financials", name: "The Financials", blurb: "Numbers you can verify beat projections you're shown.",
+    criteria: [
+      { id: "revq",    name: "Revenue quality",         hint: "1 = one-off, concentrated in one customer · 5 = recurring, diversified, contracted" },
+      { id: "cash",    name: "Margins & cash flow",     hint: "1 = burning cash, thin margins · 5 = strong margins, real free cash flow" },
+      { id: "balance", name: "Balance sheet & leverage",hint: "1 = heavily levered, fragile · 5 = conservative debt, resilient" },
+      { id: "proj",    name: "Projection realism",      hint: "1 = hockey stick with no basis · 5 = conservative assumptions you can defend" },
+    ]},
+  { id: "terms", name: "Deal Terms & Structure", blurb: "A great business at bad terms is a bad deal.",
+    criteria: [
+      { id: "price",   name: "Valuation / price",       hint: "1 = priced for perfection vs comps · 5 = attractive price with margin of safety" },
+      { id: "downside",name: "Downside protection",     hint: "1 = total-loss exposure · 5 = collateral, preference, or structure that protects capital" },
+      { id: "exit",    name: "Liquidity & exit path",   hint: "1 = no plausible way out · 5 = clear, realistic path to getting your money back" },
+      { id: "align",   name: "Alignment of incentives", hint: "1 = sponsor wins on fees even if you lose · 5 = sponsor gets paid mainly when you do" },
+    ]},
+  { id: "risk", name: "Risk", blurb: "What kills this deal, and how likely is it?",
+    criteria: [
+      { id: "keyman",  name: "Key-person risk",         hint: "1 = whole thing depends on one person · 5 = survives losing any one person" },
+      { id: "conc",    name: "Concentration risk",      hint: "1 = one customer/supplier/tenant is most of it · 5 = well diversified" },
+      { id: "reg",     name: "Regulatory & legal",      hint: "1 = open legal or regulatory exposure · 5 = clean and unlikely to change" },
+      { id: "exec",    name: "Execution complexity",    hint: "1 = many hard things must all go right · 5 = simple plan with few moving parts" },
+    ]},
+  { id: "fit", name: "Fit With Your Mandate", blurb: "The deal can be good and still wrong for you.",
+    criteria: [
+      { id: "size",    name: "Check size & allocation", hint: "1 = oversized bet for your portfolio · 5 = comfortable position size" },
+      { id: "time",    name: "Time & attention",        hint: "1 = demands time you don't have · 5 = fits your capacity" },
+      { id: "comp",    name: "Circle of competence",    hint: "1 = you can't verify the claims · 5 = you understand it well enough to add value" },
+      { id: "sleep",   name: "Sleep-at-night factor",   hint: "1 = would keep you up at night · 5 = comfortable holding through bad news" },
+    ]},
+];
+
+const DEAL_TYPES = [
+  { id: "operating",  label: "Operating business / acquisition", weights: { people: 25, business: 20, financials: 20, terms: 15, risk: 10, fit: 10 } },
+  { id: "realestate", label: "Real estate",                      weights: { people: 20, business: 15, financials: 20, terms: 25, risk: 10, fit: 10 } },
+  { id: "startup",    label: "Startup / angel",                  weights: { people: 30, business: 25, financials: 10, terms: 15, risk: 10, fit: 10 } },
+  { id: "fund",       label: "Fund / syndicate",                 weights: { people: 30, business: 10, financials: 15, terms: 25, risk: 10, fit: 10 } },
+  { id: "other",      label: "Other",                            weights: { people: 20, business: 20, financials: 20, terms: 15, risk: 15, fit: 10 } },
+];
+
+const RED_FLAGS = [
+  { id: "guaranteed", label: "Returns described as guaranteed, safe, or \"can't lose\"" },
+  { id: "pressure",   label: "Pressure to commit fast — artificial deadline or \"spots filling up\"" },
+  { id: "nofin",      label: "Financials unavailable, unaudited, or don't reconcile" },
+  { id: "history",    label: "Sponsor has lawsuits, fraud history, or undisclosed failed ventures" },
+  { id: "opaque",     label: "Can't clearly explain how the money is actually made" },
+  { id: "waterfall",  label: "Your capital pays earlier investors or sponsor fees before the business" },
+  { id: "nodocs",     label: "No clean legal docs — handshake terms or shifting paperwork" },
+  { id: "refs",       label: "Every reference was supplied by the sponsor (none independent)" },
+];
+
+const STAGES = ["Screening", "Diligence", "Passed", "Invested"];
+
+const GRADE_BANDS = [
+  { min: 80, letter: "A", verdict: "Strong",   advice: "Proceed to full diligence — verify the claims behind the high scores." },
+  { min: 65, letter: "B", verdict: "Promising", advice: "Worth diligence — focus on the weakest categories." },
+  { min: 50, letter: "C", verdict: "Mixed",    advice: "Only proceed if the top risks can be resolved on paper first." },
+  { min: 35, letter: "D", verdict: "Weak",     advice: "Likely pass — the burden of proof is on the deal now." },
+  { min: 0,  letter: "F", verdict: "Pass",     advice: "Walk away. Capital preservation comes first." },
+];
+
+const CRIT_KEYS = CATEGORIES.flatMap(c => c.criteria.map(x => c.id + "." + x.id));
+
+/* ================= Storage (IndexedDB) ================= */
+
+let _db = null;
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("deal-room", 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("deals")) db.createObjectStore("deals", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("files")) db.createObjectStore("files", { keyPath: "id" });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function tx(store, mode, fn) {
+  return new Promise((resolve, reject) => {
+    const t = _db.transaction(store, mode);
+    const req = fn(t.objectStore(store));
+    t.oncomplete = () => resolve(req ? req.result : undefined);
+    t.onerror = () => reject(t.error);
+  });
+}
+const dbPut    = (store, val) => tx(store, "readwrite", s => s.put(val));
+const dbDelete = (store, key) => tx(store, "readwrite", s => s.delete(key));
+const dbAll    = (store)      => tx(store, "readonly",  s => s.getAll());
+
+/* ================= State & helpers ================= */
+
+let deals = [];
+let view = "pipeline";
+let currentDealId = null;
+let saveTimer = null;
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// Ids get interpolated into inline handlers, so an imported one must match the safe
+// uid charset; anything else (a crafted file) is replaced with a fresh local id.
+const safeId = id => (typeof id === "string" && /^[a-z0-9]+$/i.test(id)) ? id : uid();
+
+function newDealObj(name, type) {
+  return {
+    id: uid(), name, type, stage: "Screening",
+    ask: "", source: "", summary: "", callNotes: "", notes: "",
+    analysis: null,
+    createdAt: Date.now(), updatedAt: Date.now(),
+  };
+}
+function getDeal(id) { return deals.find(d => d.id === id); }
+
+const pendingSaves = new Map();  // id -> deal, so a debounced write is never dropped by another deal's edit
+function saveDeal(deal, immediate) {
+  deal.updatedAt = Date.now();
+  if (immediate) { pendingSaves.delete(deal.id); return dbPut("deals", deal); }
+  pendingSaves.set(deal.id, deal);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSaves, 400);
+}
+function flushSaves() {
+  clearTimeout(saveTimer); saveTimer = null;
+  const items = [...pendingSaves.values()];
+  pendingSaves.clear();
+  for (const d of items) dbPut("deals", d);
+}
+window.addEventListener("beforeunload", () => { if (pendingSaves.size) flushSaves(); });
+
+function weightsFor(deal) {
+  const t = DEAL_TYPES.find(t => t.id === deal.type) || DEAL_TYPES[DEAL_TYPES.length - 1];
+  return t.weights;
+}
+function fmtSize(b) {
+  if (b > 1048576) return (b / 1048576).toFixed(1) + " MB";
+  if (b > 1024) return Math.round(b / 1024) + " KB";
+  return b + " B";
+}
+
+/* ================= Grade from a saved analysis ================= */
+
+function gradeFromAnalysis(deal) {
+  const a = deal.analysis;
+  if (!a || !a.data) return null;
+  const w = weightsFor(deal);
+  const byCat = {};
+  for (const s of a.data.suggested_scores || []) {
+    if (!CRIT_KEYS.includes(s.criterion)) continue;
+    const v = Number(s.score);
+    if (!(v >= 1 && v <= 5)) continue;
+    const catId = s.criterion.split(".")[0];
+    (byCat[catId] || (byCat[catId] = { sum: 0, n: 0 }));
+    byCat[catId].sum += v; byCat[catId].n++;
+  }
+  const flags = (a.data.red_flags || []).filter(f => RED_FLAGS.some(x => x.id === f.id));
+  const flagged = flags.length > 0;
+  let wSum = 0, wUsed = 0;
+  for (const cat of CATEGORIES) {
+    const b = byCat[cat.id];
+    if (b && b.n) { wSum += (b.sum / b.n) * w[cat.id]; wUsed += w[cat.id]; }
+  }
+  if (!wUsed) return { score: null, letter: null, flagged, flags, cats: byCat };
+  let score = Math.round(((wSum / wUsed) - 1) / 4 * 100);
+  if (flagged && score > 49) score = 49;
+  const band = GRADE_BANDS.find(b => score >= b.min);
+  return { score, letter: band.letter, verdict: band.verdict, advice: band.advice, flagged, flags, cats: byCat };
+}
+
+/* ================= The prompt that teaches his Claude ================= */
+
+function vettingPrompt(deal) {
+  const t = DEAL_TYPES.find(t => t.id === deal.type);
+  const w = weightsFor(deal);
+  const critText = CATEGORIES.map(cat =>
+    `### ${cat.name} (weight ${w[cat.id]}%)\n` +
+    cat.criteria.map(c => `- ${cat.id}.${c.id} — ${c.name}: ${c.hint}`).join("\n")
+  ).join("\n\n");
+  const flagText = RED_FLAGS.map(f => `- ${f.id}: ${f.label}`).join("\n");
+  const example = {
+    summary: "…",
+    key_facts: [{ label: "Revenue (2025)", value: "…" }],
+    suggested_scores: [{ criterion: "people.track", score: 3, rationale: "…" }],
+    red_flags: [{ id: "guaranteed", reason: "…" }],
+    missing_info: ["…"],
+    diligence_questions: ["…"],
+    overall_take: "…",
+  };
+  let ctx = `Name: ${deal.name}\nType: ${t ? t.label : deal.type}\nAsk / check size: ${deal.ask || "(not specified)"}\nSource: ${deal.source || "(not specified)"}\nSummary: ${deal.summary || "(none)"}`;
+  if (deal.callNotes) ctx += `\n\nCall notes (what the sponsor claimed):\n${deal.callNotes}`;
+  if (deal.notes) ctx += `\n\nMy notes:\n${deal.notes}`;
+
+  return `You are the chief investment analyst for a disciplined family office. Screen the deal below the way the best family offices do: capital preservation first, verify before trusting, and separate evidence from salesmanship.
+
+The raise materials for this deal are attached to this message (pitch deck, financials, term sheet, etc.). Read them carefully before scoring.
+
+## The deal
+${ctx}
+
+## How to screen it
+1. Score only what the materials give you real evidence for. No evidence for a criterion → skip it, don't guess.
+2. Pitch decks are marketing. The sponsor's own claims are not evidence; independently verifiable facts (audited numbers, signed contracts, third-party data) are. Never score above 3 on a criterion supported only by the sponsor's unverified claims.
+3. Projections are claims about the future, not financials. Judge projection realism by the assumptions, not the headline numbers.
+4. Flag every deal-killer red flag actually present and say where it appears. Any single deal-killer means the default answer is pass.
+5. Every score needs a one-line rationale citing specific evidence.
+6. If you're missing a document or data point you'd need to score something, tell me exactly what to send and ask me for it — don't guess. I can attach more files and you can revise your scores.
+7. Be direct. A polite pass saves more money than an optimistic maybe.
+
+## Scorecard (score 1 = worst, 5 = excellent; use the exact criterion ids)
+${critText}
+
+## Deal-killer red flags (use the exact ids)
+${flagText}
+
+## What to give me
+A screening report with: a short summary; the key facts you found; a score (1–5) and one-line rationale for each criterion you have evidence for; the red flags present; what's missing; diligence questions to ask the sponsor, verbatim; and an overall take — pursue, dig deeper, or pass, and why.
+
+Then, at the very end, output a single fenced code block (\`\`\`json) in exactly this shape, using the exact criterion and red-flag ids above, so I can save your analysis back into my Deal Room app:
+
+\`\`\`json
+${JSON.stringify(example, null, 2)}
+\`\`\``;
+}
+
+/* ================= Import a result Claude produced ================= */
+
+function extractAnalysis(raw) {
+  let jsonText = null;
+  const fence = raw.match(/```json\s*([\s\S]*?)```/i) || raw.match(/```\s*([\s\S]*?)```/);
+  if (fence) jsonText = fence[1];
+  else { const s = raw.indexOf("{"), e = raw.lastIndexOf("}"); if (s >= 0 && e > s) jsonText = raw.slice(s, e + 1); }
+  if (!jsonText) return null;
+  try {
+    const o = JSON.parse(jsonText);
+    if (o && typeof o === "object" && (o.summary !== undefined || Array.isArray(o.suggested_scores))) return normalizeAnalysis(o);
+  } catch {}
+  return null;
+}
+function normalizeAnalysis(o) {
+  const arr = x => Array.isArray(x) ? x : [];
+  return {
+    summary: String(o.summary || ""),
+    key_facts: arr(o.key_facts).filter(x => x && x.label).map(x => ({ label: String(x.label), value: String(x.value ?? "") })),
+    suggested_scores: arr(o.suggested_scores).filter(x => x && CRIT_KEYS.includes(x.criterion) && Number(x.score) >= 1 && Number(x.score) <= 5)
+      .map(x => ({ criterion: x.criterion, score: Number(x.score), rationale: String(x.rationale || "") })),
+    red_flags: arr(o.red_flags).filter(x => x && RED_FLAGS.some(f => f.id === x.id)).map(x => ({ id: x.id, reason: String(x.reason || "") })),
+    missing_info: arr(o.missing_info).map(String),
+    diligence_questions: arr(o.diligence_questions).map(String),
+    overall_take: String(o.overall_take || ""),
+  };
+}
+
+/* ================= Rendering ================= */
+
+const app = document.getElementById("app");
+function go(v, id) {
+  view = v;
+  if (id !== undefined) currentDealId = id;
+  render();
+  window.scrollTo(0, 0);
+}
+function render() {
+  if (view === "pipeline") renderPipeline();
+  else if (view === "deal") renderDeal();
+  else if (view === "settings") renderSettings();
+  else if (view === "newdeal") renderNewDeal();
+}
+function gradePill(g) {
+  if (!g || g.score === null) return `<span class="grade-pill g-none">—</span>`;
+  return `<span class="grade-pill g-${g.letter}" title="${g.score}/100">${g.letter}</span>`;
+}
+
+/* ---- pipeline ---- */
+function renderPipeline() {
+  const sorted = [...deals].sort((a, b) => b.updatedAt - a.updatedAt);
+  let body = "";
+  if (!deals.length) {
+    body = `<div class="card"><div class="empty">
+      No deals yet.<br><br>
+      <button class="btn primary" onclick="go('newdeal')">+ Add your first deal</button>
+    </div></div>`;
+  } else {
+    for (const st of STAGES) {
+      const list = sorted.filter(d => d.stage === st);
+      if (!list.length) continue;
+      body += `<div class="card"><h2>${st} <span class="hint">(${list.length})</span></h2>` +
+        list.map(d => {
+          const t = DEAL_TYPES.find(t => t.id === d.type);
+          return `<div class="deal-row" onclick="go('deal','${d.id}')">
+            <div>
+              <div class="deal-name">${esc(d.name)}</div>
+              <div class="deal-sub">${esc(t ? t.label : "")}${d.ask ? " · " + esc(d.ask) : ""}</div>
+            </div>
+            ${gradePill(gradeFromAnalysis(d))}
+          </div>`;
+        }).join("") + `</div>`;
+    }
+  }
+  app.innerHTML = `
+    <div class="row" style="margin-bottom:1rem; justify-content:space-between;">
+      <h1 style="margin:0;">Pipeline</h1>
+      <button class="btn primary" onclick="go('newdeal')">+ New deal</button>
+    </div>
+    ${body}
+    <p class="hint">Everything stays on this device. Nothing is uploaded — the analysis runs in your own Claude.</p>`;
+}
+
+/* ---- new deal ---- */
+function renderNewDeal() {
+  app.innerHTML = `
+    <h1>New deal</h1>
+    <div class="card">
+      <label class="field"><span>Deal name</span>
+        <input type="text" id="nd-name" placeholder="e.g. Riverside Laundromat" autocomplete="off">
+      </label>
+      <label class="field"><span>Deal type</span>
+        <select id="nd-type">${DEAL_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join("")}</select>
+        <span class="hint">Sets the scorecard weighting — e.g. startups weight the people heaviest, real estate weights the terms.</span>
+      </label>
+      <div class="row">
+        <button class="btn primary" onclick="createDeal()">Create deal</button>
+        <button class="btn ghost" onclick="go('pipeline')">Cancel</button>
+      </div>
+    </div>`;
+  document.getElementById("nd-name").focus();
+}
+async function createDeal() {
+  const name = document.getElementById("nd-name").value.trim();
+  if (!name) { toast("Give the deal a name"); return; }
+  const d = newDealObj(name, document.getElementById("nd-type").value);
+  deals.push(d);
+  await saveDeal(d, true);
+  go("deal", d.id);
+}
+
+/* ---- deal page ---- */
+async function renderDeal() {
+  const d = getDeal(currentDealId);
+  if (!d) { go("pipeline"); return; }
+  const all = await dbAll("files");
+  const files = all.filter(f => f.dealId === d.id).sort((a, b) => b.addedAt - a.addedAt);
+  const t = DEAL_TYPES.find(t => t.id === d.type);
+  app.innerHTML = `
+    <div class="row" style="justify-content:space-between; margin-bottom:.4rem;">
+      <button class="btn ghost small" onclick="go('pipeline')">← Pipeline</button>
+      <select style="width:auto;" onchange="setStage(this.value)">
+        ${STAGES.map(s => `<option ${s === d.stage ? "selected" : ""}>${s}</option>`).join("")}
+      </select>
+    </div>
+    <h1 style="margin-bottom:.2rem;">${esc(d.name)}</h1>
+    <p class="hint" style="margin-top:0;">${esc(t ? t.label : "")}</p>
+    ${filesCard(files)}
+    ${analyzeCard(d, files)}
+    ${reportCard(d)}
+    ${detailsCard(d)}
+    <div class="card">
+      <button class="btn danger" onclick="deleteDeal('${d.id}')">Delete this deal</button>
+    </div>`;
+}
+function setStage(s) { const d = getDeal(currentDealId); d.stage = s; saveDeal(d); }
+
+function filesCard(files) {
+  return `<div class="card">
+    <h2>1. Add the raise files</h2>
+    <div class="dropzone" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="dzDrop(event)" onclick="document.getElementById('fileAttach').click()">
+      <span class="dz-big">Drop the deal files here</span>
+      <span class="hint">or tap to choose — pitch deck, financials, term sheet (PDF, images, spreadsheets, anything)</span>
+    </div>
+    ${files.length ? files.map(f => `
+      <div class="file-row">
+        <span class="f-name">${esc(f.name)}</span>
+        <span class="f-meta">${fmtSize(f.size)}</span>
+        <button class="btn small" onclick="openFile('${f.id}')">Open</button>
+        <button class="btn small ghost" onclick="removeFile('${f.id}')" title="Remove">✕</button>
+      </div>`).join("") : `<p class="hint" style="margin-bottom:0;">No files yet. You can also run the analysis on notes alone, but the file is what makes it sharp.</p>`}
+  </div>`;
+}
+
+function analyzeCard(d, files) {
+  const canShare = !!(navigator.canShare && navigator.share);
+  return `<div class="card">
+    <h2>2. Analyze it with your Claude</h2>
+    <p class="hint">No account key, nothing paid — this hands the deal to your own Claude, which reads the file and scores it against the family-office checklist.</p>
+    <ol class="steps">
+      <li><b>Copy the instructions and open Claude.</b>
+        <div class="row" style="margin:.45rem 0;">
+          <button class="btn primary" onclick="sendToClaude()">Copy instructions &amp; open Claude</button>
+          ${canShare ? `<button class="btn" onclick="shareFiles()">Send files to Claude app</button>` : ""}
+        </div>
+      </li>
+      <li><b>In Claude, attach your raise file${files.length !== 1 ? "s" : ""}${files.length ? ` (${files.length} saved here)` : ""} and paste.</b> Claude reads the file, returns a scored family-office report, and asks you for anything else it needs to score the deal.</li>
+      <li><b>Save the result (optional).</b> Paste Claude's reply back here to keep the scored report and grade in this app.
+        <textarea id="paste-result" placeholder="Paste Claude's full reply here — it ends with a JSON block…"></textarea>
+        <div class="row" style="margin-top:.4rem;"><button class="btn" onclick="importResult()">Save result</button></div>
+        <div id="paste-err" style="margin-top:.5rem;"></div>
+      </li>
+    </ol>
+  </div>`;
+}
+
+function sendToClaude() {
+  const d = getDeal(currentDealId);
+  if (!d) return;
+  copyText(vettingPrompt(d), "Instructions copied — attach your file in Claude and paste");
+  window.open("https://claude.ai/new", "_blank", "noopener");
+}
+async function shareFiles() {
+  const d = getDeal(currentDealId);
+  if (!d) return;
+  const all = await dbAll("files");
+  const recs = all.filter(f => f.dealId === d.id);
+  if (!recs.length) { toast("No files to send — add one first"); return; }
+  const files = recs.map(f => new File([f.blob], f.name, { type: f.type || "application/octet-stream" }));
+  try {
+    if (navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, title: d.name, text: "Deal materials for " + d.name });
+    } else {
+      toast("Sharing files isn't supported here — attach them in Claude manually");
+    }
+  } catch { /* user cancelled the share sheet */ }
+}
+function importResult() {
+  const d = getDeal(currentDealId);
+  const box = document.getElementById("paste-result");
+  const err = document.getElementById("paste-err");
+  const raw = (box.value || "").trim();
+  if (!raw) { toast("Paste Claude's reply first"); return; }
+  const data = extractAnalysis(raw);
+  if (!data) {
+    err.innerHTML = `<div class="flagbox" style="margin-bottom:0;"><b>Couldn't read that.</b> Paste Claude's full reply, including the JSON block at the very end.</div>`;
+    return;
+  }
+  d.analysis = { at: Date.now(), source: "claude", data };
+  saveDeal(d, true);
+  renderDeal();
+  toast("Analysis saved");
+}
+
+/* ---- report ---- */
+function analysisBanner(d) {
+  const g = gradeFromAnalysis(d);
+  if (!g || (g.score === null && !g.flagged)) return "";
+  const flagNote = g.flagged ? `<div class="flagbox"><b>⚠ Deal-killer flagged.</b> Grade capped at 49 — the family-office default on a red flag is <b>pass</b>, no matter how good the story is.</div>` : "";
+  return `<div class="verdict">${gradePill(g)}
+    <div class="v-text"><b>${g.score !== null ? `${g.score}/100 — ${g.verdict}` : "Red flag raised"}</b>
+    <p class="hint">${g.score !== null ? g.advice : ""}</p></div>
+  </div>${flagNote}`;
+}
+function critLabel(key) {
+  const [catId, critId] = key.split(".");
+  const cat = CATEGORIES.find(c => c.id === catId);
+  const crit = cat && cat.criteria.find(c => c.id === critId);
+  return crit ? `${esc(crit.name)} <span class="hint">· ${esc(cat.name)}</span>` : esc(key);
+}
+function reportCard(d) {
+  const a = d.analysis;
+  if (!a || !a.data) return "";
+  const r = a.data, g = gradeFromAnalysis(d);
+  const when = new Date(a.at).toLocaleString();
+  let html = `<div class="card">
+    ${analysisBanner(d)}
+    <h2>Report</h2>
+    <p class="hint" style="margin-top:0;">Scored by your Claude · ${esc(when)} — this is Claude's read of the materials, not investment advice.</p>
+    <p style="white-space:pre-wrap;">${esc(r.summary)}</p>
+    ${r.key_facts && r.key_facts.length ? `<div style="overflow-x:auto;"><table class="cmp">
+      ${r.key_facts.map(f => `<tr><td style="white-space:nowrap;"><b>${esc(f.label)}</b></td><td>${esc(f.value)}</td></tr>`).join("")}
+    </table></div>` : ""}
+  </div>`;
+
+  const scores = (r.suggested_scores || []).filter(s => CRIT_KEYS.includes(s.criterion));
+  if (g && g.cats && Object.keys(g.cats).length) {
+    html += `<div class="card"><h2>Category scores</h2>` + CATEGORIES.map(cat => {
+      const b = g.cats[cat.id];
+      const pct = b && b.n ? ((b.sum / b.n - 1) / 4 * 100) : null;
+      return `<div class="meter"><span class="m-label">${cat.name}</span>
+        <span class="m-track"><span class="m-fill" style="width:${pct ?? 0}%"></span></span>
+        <span class="m-val">${pct !== null ? Math.round(pct) : "—"}</span></div>`;
+    }).join("") + `</div>`;
+  }
+  if (scores.length) {
+    html += `<div class="card"><h2>Scores &amp; evidence</h2>` +
+      scores.map(s => `<div class="crit"><div class="crit-label">${critLabel(s.criterion)}<span class="crit-hint">${esc(s.rationale)}</span></div><span class="chip">${Number(s.score)}/5</span></div>`).join("") + `</div>`;
+  }
+  const flags = (r.red_flags || []).filter(f => RED_FLAGS.some(x => x.id === f.id));
+  if (flags.length) {
+    html += `<div class="card"><h2 style="color:var(--critical)">Red flags spotted</h2>` +
+      flags.map(f => { const def = RED_FLAGS.find(x => x.id === f.id); return `<div class="crit"><div class="crit-label"><b>${esc(def.label)}</b><span class="crit-hint">${esc(f.reason)}</span></div></div>`; }).join("") + `</div>`;
+  }
+  if ((r.missing_info && r.missing_info.length) || (r.diligence_questions && r.diligence_questions.length)) {
+    html += `<div class="card"><h2>Before any money moves</h2>`;
+    if (r.missing_info && r.missing_info.length) html += `<h3>Missing from the materials</h3><ul>` + r.missing_info.map(m => `<li>${esc(m)}</li>`).join("") + `</ul>`;
+    if (r.diligence_questions && r.diligence_questions.length) html += `<h3>Ask the sponsor</h3><ul>` + r.diligence_questions.map(q => `<li>${esc(q)}</li>`).join("") + `</ul>`;
+    html += `</div>`;
+  }
+  if (r.overall_take) html += `<div class="card"><h2>Analyst's take</h2><p style="margin:0; white-space:pre-wrap;">${esc(r.overall_take)}</p></div>`;
+  return html;
+}
+
+/* ---- details (optional context) ---- */
+function detailsCard(d) {
+  return `<details class="card">
+    <summary>Deal details &amp; notes <span class="hint">(optional — extra context for Claude)</span></summary>
+    <div style="margin-top:.8rem;">
+      <label class="field"><span>Ask / check size</span>
+        <input type="text" value="${esc(d.ask)}" oninput="upd('ask',this.value)" placeholder="e.g. $50k for 10%"></label>
+      <label class="field"><span>Source / who brought it</span>
+        <input type="text" value="${esc(d.source)}" oninput="upd('source',this.value)" placeholder="e.g. referral from Mike"></label>
+      <label class="field"><span>One-line summary</span>
+        <textarea style="min-height:3.5rem" oninput="upd('summary',this.value)" placeholder="What is the deal, in plain English?">${esc(d.summary)}</textarea></label>
+      <label class="field"><span>Call notes — what the sponsor claimed</span>
+        <textarea oninput="upd('callNotes',this.value)" placeholder="Date, who was on the call, what was claimed…">${esc(d.callNotes)}</textarea></label>
+      <label class="field" style="margin-bottom:0;"><span>Your notes</span>
+        <textarea oninput="upd('notes',this.value)" placeholder="Things to verify, your thinking…">${esc(d.notes)}</textarea></label>
+    </div>
+  </details>`;
+}
+function upd(field, val) { const d = getDeal(currentDealId); d[field] = val; saveDeal(d); }
+
+/* ---- files handling ---- */
+function dzOver(e) { e.preventDefault(); e.currentTarget.classList.add("drag"); }
+function dzLeave(e) { e.currentTarget.classList.remove("drag"); }
+function dzDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("drag");
+  if (e.dataTransfer && e.dataTransfer.files.length) storeFiles(e.dataTransfer.files);
+}
+async function storeFiles(fileList) {
+  const d = getDeal(currentDealId);
+  if (!d) return;
+  let added = 0;
+  for (const file of fileList) {
+    if (file.size > 25 * 1048576) { toast(`${file.name} is over 25 MB — skipped`); continue; }
+    await dbPut("files", { id: uid(), dealId: d.id, name: file.name, type: file.type, size: file.size, blob: file, addedAt: Date.now() });
+    added++;
+  }
+  if (added) toast(added + " file" + (added > 1 ? "s" : "") + " added");
+  renderDeal();
+}
+document.getElementById("fileAttach").addEventListener("change", e => {
+  if (e.target.files.length) storeFiles(e.target.files);
+  e.target.value = "";
+});
+async function openFile(id) {
+  const all = await dbAll("files");
+  const f = all.find(x => x.id === id);
+  if (!f) return;
+  const url = URL.createObjectURL(f.blob);
+  window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+async function removeFile(id) {
+  if (!confirm("Remove this file?")) return;
+  await dbDelete("files", id);
+  renderDeal();
+}
+async function deleteDeal(id) {
+  const d = getDeal(id);
+  if (!confirm(`Delete "${d.name}" and its files? This can't be undone.`)) return;
+  const all = await dbAll("files");
+  for (const f of all.filter(f => f.dealId === id)) await dbDelete("files", f.id);
+  await dbDelete("deals", id);
+  deals = deals.filter(x => x.id !== id);
+  go("pipeline");
+  toast("Deal deleted");
+}
+
+/* ---- settings ---- */
+function renderSettings() {
+  app.innerHTML = `
+    <h1>Settings</h1>
+    <div class="card">
+      <h2>How Deal Room works</h2>
+      <p class="hint" style="margin-top:0;">A private workbench for vetting deals against the checklist prominent family offices use. There's no account, no server, and no AI cost — the analysis runs inside <b>your own Claude</b>. Your deals and files stay in this browser.</p>
+      <ol style="margin:0; padding-left:1.2rem; font-size:.9rem; line-height:1.6;">
+        <li><b>New deal</b> → name it and pick a type (that sets the scorecard weighting).</li>
+        <li><b>Add the raise files</b> — drop in the pitch deck, financials, or term sheet.</li>
+        <li><b>Analyze with your Claude</b> → tap "Copy instructions &amp; open Claude", attach your file in Claude, and paste. Claude scores the deal like a family-office analyst and asks for anything it's missing.</li>
+        <li><b>Save the result</b> (optional) → paste Claude's reply back to keep the scored report and A–F grade here.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>Three ways to use it</h2>
+      <p class="hint" style="margin-top:0;">Same file, whatever's handy:</p>
+      <ul style="margin:0; padding-left:1.2rem; font-size:.9rem; line-height:1.6;">
+        <li><b>On your phone</b> — open it in your browser and use "Add to Home Screen"; it runs full-screen like an app. (Works best from a hosted link — ask whoever sent it.)</li>
+        <li><b>On your computer</b> — just open the file in any browser. Works offline.</li>
+        <li><b>Inside Claude</b> — drop the file into a Claude chat and ask it to open the Deal Room; Claude runs it in its browser.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Run it from your own website (most private)</h2>
+      <p class="hint" style="margin-top:0;">Want it to feel like your own private tool? Put this one file on a website you control and open that link — then it installs to your phone's home screen cleanly and lives at your own address.</p>
+      <ul style="margin:0 0 .6rem; padding-left:1.2rem; font-size:.9rem; line-height:1.6;">
+        <li>Upload <b>this single HTML file</b> to any web host — a free one like Cloudflare Pages, Netlify, or GitHub Pages, or a spare folder on a site/domain you already own.</li>
+        <li>Open your link, then <b>Add to Home Screen</b>. Keep the link unlisted, or password-protect it, and it's yours alone.</li>
+      </ul>
+      <p class="hint" style="margin-bottom:0;">It stays just as private either way: the page is plain static HTML with no tracking and no accounts, your deals and files never leave your browser, and the only thing ever sent out is the file <i>you</i> choose to hand to your own Claude.</p>
+    </div>
+    <div class="card">
+      <h2>Backup</h2>
+      <div class="row">
+        <button class="btn" onclick="exportBackup()">Export all deals</button>
+        <button class="btn" onclick="document.getElementById('fileImportBackup').click()">Restore backup</button>
+      </div>
+      <p class="hint" style="margin-bottom:0;">Saves every deal, note, and saved report to one file (the attached raise files stay on-device — they aren't in the backup). Your data lives in this browser's storage, so back up occasionally: clearing site data clears the app.</p>
+    </div>`;
+}
+function download(name, obj) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function exportBackup() {
+  download("deal-room-backup-" + new Date().toISOString().slice(0, 10) + ".json",
+    { kind: "dealroom-backup", version: 2, exportedAt: Date.now(), deals });
+  toast("Backup exported");
+}
+document.getElementById("fileImportBackup").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.kind !== "dealroom-backup" || !Array.isArray(data.deals)) throw new Error("bad format");
+    if (!confirm(`Restore ${data.deals.length} deal(s)? Deals with matching IDs will be overwritten.`)) return;
+    for (const d of data.deals) {
+      d.id = safeId(d.id);
+      const i = deals.findIndex(x => x.id === d.id);
+      if (i >= 0) deals[i] = d; else deals.push(d);
+      await dbPut("deals", d);
+    }
+    toast("Backup restored");
+    go("pipeline");
+  } catch {
+    toast("Couldn't read that file — is it a Deal Room backup?");
+  }
+});
+
+/* ================= Misc ================= */
+async function copyText(text, okMsg) {
+  try { await navigator.clipboard.writeText(text); toast(okMsg || "Copied"); return; }
+  catch {}
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand("copy"); ta.remove();
+    toast(okMsg || "Copied");
+  } catch { toast("Couldn't copy — select the text manually"); }
+}
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2800);
+}
+
+/* ---- installable web-app manifest (self-contained, no separate files) ---- */
+(function pwa() {
+  try {
+    const icon = "data:image/svg+xml," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='#2a78d6'/><text x='256' y='340' font-family='system-ui,sans-serif' font-size='260' font-weight='700' fill='#fff' text-anchor='middle'>DR</text></svg>`);
+    const manifest = {
+      name: "Deal Room", short_name: "Deal Room",
+      start_url: ".", scope: ".", display: "standalone",
+      background_color: "#0d0d0d", theme_color: "#0d0d0d",
+      icons: [{ src: icon, sizes: "any", type: "image/svg+xml", purpose: "any" }],
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }));
+    const link = document.createElement("link");
+    link.rel = "manifest"; link.href = url;
+    document.head.appendChild(link);
+  } catch {}
+})();
+
+/* ---- boot ---- */
+(async function init() {
+  try {
+    _db = await openDB();
+    deals = await dbAll("deals");
+    render();
+  } catch (e) {
+    app.innerHTML = `<div class="card">
+      <h2>Storage unavailable</h2>
+      <p>Deal Room saves your deals in this browser's local database (IndexedDB), but it isn't available right now.</p>
+      <p class="hint">This usually means private/incognito mode, or opening the file in a browser that blocks local storage for files. Try a normal (non-private) window in Chrome, Edge, or Safari, or open it from a hosted link. Nothing was lost.</p>
+    </div>`;
+  }
+})();
+</script>
+</body>
+</html>

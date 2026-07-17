@@ -1,0 +1,89 @@
+DEAL ROOM — start here
+=======================
+
+A private little app for vetting business deals against the checklist that
+prominent family offices use — capital preservation first, verify before you
+trust, separate real evidence from salesmanship.
+
+The best part: it doesn't need any account, sign-up, or paid key. The scoring is
+done by YOUR OWN CLAUDE. Deal Room organizes the deal and hands it to Claude with
+the right instructions; Claude reads the file and scores it for you.
+
+Two files came with this:
+  • "Deal Room.html"  — the app itself. This IS the whole program.
+  • "START HERE.txt"  — this note.
+
+
+OPENING IT — pick whatever's handy
+----------------------------------
+ON YOUR PHONE (keep it on your home screen like an app):
+  • Open the app in your browser, then use "Add to Home Screen" (Share menu on
+    iPhone; the ⋮ menu on Android). It launches full-screen like a real app.
+  • Home-screen install works most reliably from a hosted link. If you want that,
+    ask the person who sent this to host it for you — it's a 2-minute thing.
+
+ON YOUR COMPUTER:
+  • Just double-click "Deal Room.html" — it opens in your browser and runs offline.
+  • Use Chrome, Edge, or Safari in a NORMAL (not private/incognito) window, so it
+    can save your deals.
+
+INSIDE CLAUDE:
+  • You can also drop "Deal Room.html" into a Claude chat and say "open this Deal
+    Room app in your browser." Claude will run it for you right there.
+
+FROM YOUR OWN WEBSITE (the most private, and the best phone install):
+  • Put this one file on a website you control and open that link. Upload it to a
+    free host like Cloudflare Pages, Netlify, or GitHub Pages, or drop it in a
+    spare folder on a site/domain you already own.
+  • Open your link, then "Add to Home Screen" — it installs cleanly and lives at
+    your own address. Keep the link unlisted or password-protect it, and it's
+    yours alone.
+  • It stays just as private: the page is plain static HTML with no tracking and
+    no accounts, your deals and files never leave your browser, and the only thing
+    ever sent out is the file YOU choose to hand to your own Claude.
+
+Your deals live only in the browser you use, on that device. Now and then use
+Settings -> "Export all deals" to keep a backup file.
+
+
+HOW TO VET A DEAL (about 3 taps)
+--------------------------------
+1. Tap "+ New deal", give it a name, and pick the type. (The type tunes the
+   scorecard weighting — startups lean on the people, real estate on the terms.)
+
+2. DROP THE RAISE FILES. Drag the pitch deck / financials / term sheet onto the
+   drop zone (or tap it to choose). PDFs, images, spreadsheets — whatever they
+   sent you.
+
+3. TAP "Copy instructions & open Claude." This copies a full family-office
+   analyst brief and opens Claude. In Claude:
+     - attach the same raise file(s), and
+     - paste (the instructions are already on your clipboard).
+   Claude reads the file and gives you a scored report: a summary, the key facts,
+   a 1-to-5 score with the reasoning for each thing it could judge, the red-flag
+   deal-killers it spotted, what's missing, and the questions to ask the sponsor.
+   If it needs more to score something, it'll tell you exactly what to send — just
+   attach it and Claude revises.
+
+4. (Optional) SAVE THE RESULT. Copy Claude's reply, paste it back into the app's
+   "Save the result" box, and Deal Room keeps the scored report and an A-F grade
+   with the deal. (Claude ends its reply with a little data block the app reads —
+   just paste the whole thing.)
+
+That's it. No key, no cost beyond your normal Claude, nothing leaves your device
+except the file you choose to hand to your own Claude.
+
+
+THE ONE RULE WORTH KNOWING
+--------------------------
+Any single "deal-killer" red flag (guaranteed returns, pressure to close fast,
+financials that don't reconcile, a sponsor who can't explain how the money is
+made...) caps the grade at 49 and pushes the verdict to PASS — no matter how good
+the rest of the story sounds. That's the family-office reflex, and it's the whole
+point of vetting before you wire a dollar.
+
+
+WANT CLAUDE TO WALK YOU THROUGH IT?
+-----------------------------------
+Open Claude, drop in both of these files, and say: "Walk me through how to use
+this Deal Room app." It can read the app and answer anything.
