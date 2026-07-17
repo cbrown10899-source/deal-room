@@ -226,7 +226,7 @@ const CATEGORIES = [
   { id: "financials", name: "The Financials", blurb: "Numbers you can verify beat projections you're shown.",
     criteria: [
       { id: "revq",    name: "Revenue quality",         hint: "1 = one-off, concentrated in one customer · 5 = recurring, diversified, contracted" },
-      { id: "cash",    name: "Margins & cash flow",     hint: "1 = burning cash, thin margins · 5 = strong margins, real free cash flow" },
+      { id: "cash",    name: "Margins & cash flow",     hint: "1 = thin margins, earnings not backed by cash · 5 = strong margins, real free cash flow (quality of earnings holds up)" },
       { id: "balance", name: "Balance sheet & leverage",hint: "1 = heavily levered, fragile · 5 = conservative debt, resilient" },
       { id: "proj",    name: "Projection realism",      hint: "1 = hockey stick with no basis · 5 = conservative assumptions you can defend" },
     ]},
@@ -234,14 +234,14 @@ const CATEGORIES = [
     criteria: [
       { id: "price",   name: "Valuation / price",       hint: "1 = priced for perfection vs comps · 5 = attractive price with margin of safety" },
       { id: "downside",name: "Downside protection",     hint: "1 = total-loss exposure · 5 = collateral, preference, or structure that protects capital" },
-      { id: "exit",    name: "Liquidity & exit path",   hint: "1 = no plausible way out · 5 = clear, realistic path to getting your money back" },
-      { id: "align",   name: "Alignment of incentives", hint: "1 = sponsor wins on fees even if you lose · 5 = sponsor gets paid mainly when you do" },
+      { id: "exit",    name: "Liquidity & exit path",   hint: "1 = no plausible exit, or a lock-up longer than your horizon · 5 = clear, realistic exit within your time horizon" },
+      { id: "align",   name: "Alignment of incentives", hint: "1 = heavy fees/carry; sponsor wins even if you lose · 5 = low fee drag; sponsor paid mainly when you do (net of fees)" },
     ]},
   { id: "risk", name: "Risk", blurb: "What kills this deal, and how likely is it?",
     criteria: [
       { id: "keyman",  name: "Key-person risk",         hint: "1 = whole thing depends on one person · 5 = survives losing any one person" },
       { id: "conc",    name: "Concentration risk",      hint: "1 = one customer/supplier/tenant is most of it · 5 = well diversified" },
-      { id: "reg",     name: "Regulatory & legal",      hint: "1 = open legal or regulatory exposure · 5 = clean and unlikely to change" },
+      { id: "reg",     name: "Regulatory & legal",      hint: "1 = open legal, regulatory, or reputational/headline exposure · 5 = clean legally and reputationally, unlikely to change" },
       { id: "exec",    name: "Execution complexity",    hint: "1 = many hard things must all go right · 5 = simple plan with few moving parts" },
     ]},
   { id: "fit", name: "Fit With Your Mandate", blurb: "The deal can be good and still wrong for you.",
@@ -545,7 +545,12 @@ ${ctx}
 4. Flag every deal-killer red flag actually present and say where it appears. Any single deal-killer means the default answer is pass.
 5. Every score needs a one-line rationale citing specific evidence.
 6. If you're missing a document or data point you'd need to score something, tell me exactly what to send and ask me for it — don't guess. I can attach more files and you can revise your scores.
-7. Be direct. A polite pass saves more money than an optimistic maybe.
+7. Beyond the scorecard, always address the four things prominent family offices weight heavily — and if the materials don't cover one, say so and add it to what's missing:
+   - **Fees & total cost drag** — management fees, carry, promote, and any hidden load. Judge returns net of all of it, not gross.
+   - **Tax structure & efficiency** — the holding structure, K-1 / UBTI / pass-through complexity, and the after-tax return, not just the headline.
+   - **Liquidity & lock-up** — how long capital is tied up versus my horizon, plus any gates, redemption limits, or capital calls.
+   - **Conflicts of interest** — related-party transactions, the sponsor's other funds or entities, and who else gets paid before I do.
+8. Be direct. A polite pass saves more money than an optimistic maybe.
 
 ## Scorecard (score 1 = worst, 5 = excellent; use the exact criterion ids)
 ${critText}
@@ -554,7 +559,7 @@ ${critText}
 ${flagText}
 
 ## What to give me
-A screening report with: a short summary; the key facts you found; a score (1–5) and one-line rationale for each criterion you have evidence for; the red flags present; what's missing; diligence questions to ask the sponsor, verbatim; and an overall take — pursue, dig deeper, or pass, and why.
+A screening report with: a short summary; the key facts you found; a score (1–5) and one-line rationale for each criterion you have evidence for; a short read on fees, tax, liquidity/lock-up, and conflicts (point 7); the red flags present; what's missing; diligence questions to ask the sponsor, verbatim; and an overall take — pursue, dig deeper, or pass, and why.
 
 Then, at the very end, output a single fenced code block (\`\`\`json) in exactly this shape, using the exact criterion and red-flag ids above, so I can save your analysis back into my Deal Room app:
 
