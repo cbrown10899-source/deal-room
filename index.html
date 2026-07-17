@@ -186,6 +186,8 @@
   body.demo #lockBtn, body.demo #gearBtn { display: none; }
   .demo-banner { background: color-mix(in srgb, var(--series-1) 12%, transparent); border: 1px solid var(--series-1); border-radius: 12px; padding: .7rem .9rem; margin-bottom: 1rem; font-size: .85rem; }
   .gate { max-width: 26rem; margin: 2.5rem auto; }
+  /* present for password managers, invisible to people (display:none would be ignored by managers) */
+  .pm-user { position: absolute; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
   .reliability { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: -.3rem 0 1rem; }
   .rel-badge { font-size: .74rem; font-weight: 700; border: 1px solid; border-radius: 999px; padding: .12rem .55rem; }
   @media (max-width: 540px) {
@@ -714,22 +716,28 @@ function renderGate() {
       <h1 style="margin-top:0;">Set a password</h1>
       <p style="margin:.1rem 0 .7rem; font-size:.92rem;">Think of it as a <b>cold wallet for deal vetting</b> — your deals sit locked on this device, under a key only you hold. No server, no account, no company that can see them.</p>
       <p class="hint" style="margin-top:0;">Your password is that key: it encrypts every deal, note, and file here and never leaves your browser. There's no reset — <b>if you forget it, the data can't be recovered</b> — so keep a backup (Settings → Backup) as your recovery copy.</p>
-      <label class="field"><span>New password</span>
-        <input type="password" id="pw1" autocomplete="new-password" placeholder="Choose a strong password" onkeydown="if(event.key==='Enter')doSetup()"></label>
-      <label class="field"><span>Confirm password</span>
-        <input type="password" id="pw2" autocomplete="new-password" placeholder="Type it again" onkeydown="if(event.key==='Enter')doSetup()"></label>
-      <div id="pw-err"></div>
-      <button class="btn primary" onclick="doSetup()">Encrypt &amp; continue</button>
+      <form onsubmit="event.preventDefault(); doSetup();">
+        <input type="text" class="pm-user" name="username" value="Deal Room" autocomplete="username" aria-hidden="true" tabindex="-1" readonly>
+        <label class="field"><span>New password</span>
+          <input type="password" id="pw1" name="new-password" autocomplete="new-password" placeholder="Choose a strong password"></label>
+        <label class="field"><span>Confirm password</span>
+          <input type="password" id="pw2" autocomplete="new-password" placeholder="Type it again"></label>
+        <div id="pw-err"></div>
+        <button type="submit" class="btn primary">Encrypt &amp; continue</button>
+      </form>
       ${demoLink}
     </div>`;
   } else {
     app.innerHTML = `<div class="card gate">
       <h1 style="margin-top:0;">Locked</h1>
       <p class="hint" style="margin-top:0;">Enter your password to unlock Deal Room.</p>
-      <label class="field"><span>Password</span>
-        <input type="password" id="pw1" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')doUnlock()"></label>
-      <div id="pw-err"></div>
-      <button class="btn primary" onclick="doUnlock()">Unlock</button>
+      <form onsubmit="event.preventDefault(); doUnlock();">
+        <input type="text" class="pm-user" name="username" value="Deal Room" autocomplete="username" aria-hidden="true" tabindex="-1" readonly>
+        <label class="field"><span>Password</span>
+          <input type="password" id="pw1" name="password" autocomplete="current-password" placeholder="Password"></label>
+        <div id="pw-err"></div>
+        <button type="submit" class="btn primary">Unlock</button>
+      </form>
       ${demoLink}
     </div>`;
   }
@@ -754,6 +762,15 @@ function exitDemo() {
   document.body.classList.remove("demo");
   renderGate();
 }
+// Nudge the browser's password manager to save/update the credential (Chrome and
+// Android support this API; Safari relies on the form submit alone). Best-effort.
+function offerCredentialSave(pw) {
+  try {
+    if (window.PasswordCredential && navigator.credentials && navigator.credentials.store) {
+      navigator.credentials.store(new PasswordCredential({ id: "Deal Room", password: pw })).catch(() => {});
+    }
+  } catch {}
+}
 async function doSetup() {
   const p1 = document.getElementById("pw1").value, p2 = document.getElementById("pw2").value;
   const err = document.getElementById("pw-err");
@@ -763,6 +780,7 @@ async function doSetup() {
     await createVault(p1);
     await migrateLegacy();
     deals = await loadDeals();
+    offerCredentialSave(p1);
     go("pipeline");
     toast("Encrypted — you're all set");
   } catch { err.innerHTML = gateErr("Couldn't set up encryption here."); }
@@ -774,6 +792,7 @@ async function doUnlock() {
   try {
     await unlockVault(pw);
     deals = await loadDeals();
+    offerCredentialSave(pw);
     go("pipeline");
   } catch {
     err.innerHTML = gateErr("Wrong password.");
@@ -1149,14 +1168,17 @@ function renderSettings() {
         <button class="btn" onclick="lockNow()">🔒 Lock now</button>
       </div>
       <h3>Change password</h3>
-      <label class="field"><span>Current password</span>
-        <input type="password" id="cp-cur" autocomplete="current-password"></label>
-      <label class="field"><span>New password</span>
-        <input type="password" id="cp-new" autocomplete="new-password"></label>
-      <label class="field"><span>Confirm new password</span>
-        <input type="password" id="cp-new2" autocomplete="new-password"></label>
-      <div id="cp-err"></div>
-      <button class="btn primary" onclick="doChangePw()">Update password</button>
+      <form onsubmit="event.preventDefault(); doChangePw();">
+        <input type="text" class="pm-user" name="username" value="Deal Room" autocomplete="username" aria-hidden="true" tabindex="-1" readonly>
+        <label class="field"><span>Current password</span>
+          <input type="password" id="cp-cur" autocomplete="current-password"></label>
+        <label class="field"><span>New password</span>
+          <input type="password" id="cp-new" name="new-password" autocomplete="new-password"></label>
+        <label class="field"><span>Confirm new password</span>
+          <input type="password" id="cp-new2" autocomplete="new-password"></label>
+        <div id="cp-err"></div>
+        <button type="submit" class="btn primary">Update password</button>
+      </form>
       <p class="hint" style="margin-bottom:0;">There's no reset — if you forget it, the data can't be recovered. Keep a current backup as your recovery copy.</p>
     </div>
     <div class="card">
@@ -1206,6 +1228,7 @@ async function doChangePw() {
     await changePassword(cur, n1);
     err.innerHTML = "";
     ["cp-cur", "cp-new", "cp-new2"].forEach(id => document.getElementById(id).value = "");
+    offerCredentialSave(n1);
     toast("Password updated");
   } catch { err.innerHTML = gateErr("Current password is wrong."); }
 }
