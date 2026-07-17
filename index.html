@@ -338,7 +338,8 @@ const dbAll    = (store)      => tx(store, "readonly",  s => s.getAll());
    as { iv, ct } with no base64 round-trip. */
 
 const te = new TextEncoder(), td = new TextDecoder();
-const PBKDF2_ITERS = 250000;
+const PBKDF2_ITERS = 600000;      // iteration count for NEW vaults (OWASP 2023 guidance)
+const PBKDF2_LEGACY = 250000;     // fallback for a vault that predates the stored iters field
 let masterKey = null;     // CryptoKey (AES-GCM), in-memory only; null ⇒ locked
 let vaultExists = false;
 
@@ -347,15 +348,17 @@ const randBytes = n => crypto.getRandomValues(new Uint8Array(n));
 const getVault = () => tx("meta", "readonly",  s => s.get("vault"));
 const putVault = v  => tx("meta", "readwrite", s => s.put(v));
 
-async function deriveWrapKey(password, salt) {
+// iters comes FROM the vault on unlock, so raising PBKDF2_ITERS never locks out
+// an existing vault — its key is still derived with the count it was created at.
+async function deriveWrapKey(password, salt, iters) {
   const base = await crypto.subtle.importKey("raw", te.encode(password), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: PBKDF2_ITERS, hash: "SHA-256" },
+    { name: "PBKDF2", salt, iterations: iters, hash: "SHA-256" },
     base, { name: "AES-GCM", length: 256 }, false, ["wrapKey", "unwrapKey"]);
 }
 async function createVault(password) {
   const salt = randBytes(16), wrapIv = randBytes(12);
-  const wrapKey = await deriveWrapKey(password, salt);
+  const wrapKey = await deriveWrapKey(password, salt, PBKDF2_ITERS);
   const mk = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
   const wrapped = await crypto.subtle.wrapKey("raw", mk, wrapKey, { name: "AES-GCM", iv: wrapIv });
   await putVault({ k: "vault", salt, wrapIv, wrapped, iters: PBKDF2_ITERS });
@@ -364,7 +367,7 @@ async function createVault(password) {
 async function unlockVault(password) {
   const v = await getVault();
   if (!v) throw new Error("no vault");
-  const wrapKey = await deriveWrapKey(password, v.salt);
+  const wrapKey = await deriveWrapKey(password, v.salt, v.iters || PBKDF2_LEGACY);
   // A wrong password fails GCM authentication and unwrapKey throws — that is the check.
   masterKey = await crypto.subtle.unwrapKey(
     "raw", v.wrapped, wrapKey, { name: "AES-GCM", iv: v.wrapIv },
@@ -372,13 +375,13 @@ async function unlockVault(password) {
 }
 async function changePassword(currentPw, newPw) {
   const v = await getVault();
-  const curWrap = await deriveWrapKey(currentPw, v.salt);
+  const curWrap = await deriveWrapKey(currentPw, v.salt, v.iters || PBKDF2_LEGACY);
   // Verify the current password by actually unwrapping (throws if wrong).
   const mk = await crypto.subtle.unwrapKey(
     "raw", v.wrapped, curWrap, { name: "AES-GCM", iv: v.wrapIv },
     { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
   const salt = randBytes(16), wrapIv = randBytes(12);
-  const newWrap = await deriveWrapKey(newPw, salt);
+  const newWrap = await deriveWrapKey(newPw, salt, PBKDF2_ITERS);   // re-wrap upgrades the KDF too
   const wrapped = await crypto.subtle.wrapKey("raw", mk, newWrap, { name: "AES-GCM", iv: wrapIv });
   await putVault({ k: "vault", salt, wrapIv, wrapped, iters: PBKDF2_ITERS });
   masterKey = mk;
@@ -486,6 +489,9 @@ async function flushSaves() {
   for (const d of items) await putDeal(d);
 }
 window.addEventListener("beforeunload", () => { if (pendingSaves.size) flushSaves(); });
+// Encryption is async and can't finish during unload — flush when the tab is
+// merely hidden (backgrounded/switched away), while the page is still alive.
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && pendingSaves.size) flushSaves(); });
 
 function weightsFor(deal) {
   const t = DEAL_TYPES.find(t => t.id === deal.type) || DEAL_TYPES[DEAL_TYPES.length - 1];
@@ -648,6 +654,27 @@ function normalizeAnalysis(o) {
     missing_info: arr(o.missing_info).map(String),
     diligence_questions: arr(o.diligence_questions).map(String),
     overall_take: String(o.overall_take || ""),
+  };
+}
+// Sanitize a deal from an untrusted backup file: a crafted analysis (e.g. a
+// non-array suggested_scores) would otherwise throw in gradeFromAnalysis and
+// break the whole pipeline render, and an out-of-range stage would hide the deal.
+function normalizeImportedDeal(d) {
+  const o = (d && typeof d === "object") ? d : {};
+  const now = Date.now();
+  const a = o.analysis;
+  return {
+    id: safeId(o.id),
+    name: String(o.name ?? "Untitled deal"),
+    type: DEAL_TYPES.some(t => t.id === o.type) ? o.type : "other",
+    stage: STAGES.includes(o.stage) ? o.stage : "Screening",
+    ask: String(o.ask ?? ""), source: String(o.source ?? ""),
+    summary: String(o.summary ?? ""), callNotes: String(o.callNotes ?? ""), notes: String(o.notes ?? ""),
+    analysis: (a && typeof a === "object" && a.data)
+      ? { at: Number(a.at) || now, source: String(a.source || "claude"), data: normalizeAnalysis(a.data) }
+      : null,
+    createdAt: Number(o.createdAt) || now,
+    updatedAt: Number(o.updatedAt) || now,
   };
 }
 
@@ -1073,11 +1100,24 @@ document.getElementById("fileAttach").addEventListener("change", e => {
   if (e.target.files.length) storeFiles(e.target.files);
   e.target.value = "";
 });
+// HTML/SVG/XHTML run script in OUR origin when opened as a blob: URL — and these
+// files come from sponsors we're vetting. Download those instead of viewing inline.
+function isRiskyFileType(type, name) {
+  return /^(text\/html|image\/svg\+xml|application\/xhtml\+xml)/i.test(type || "")
+      || /\.(html?|svg|xhtml)$/i.test(name || "");
+}
 async function openFile(id) {
   const f = await loadFileFull(id);
   if (!f) return;
   const url = URL.createObjectURL(f.blob);
-  window.open(url, "_blank");
+  if (isRiskyFileType(f.type, f.name)) {
+    const a = document.createElement("a");
+    a.href = url; a.download = f.name || "file";
+    a.click();
+    toast("Downloaded — open it outside the app for safety");
+  } else {
+    window.open(url, "_blank", "noopener");   // noopener: opened file can't reach back via window.opener
+  }
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 async function removeFile(id) {
@@ -1087,9 +1127,12 @@ async function removeFile(id) {
 }
 async function deleteDeal(id) {
   const d = getDeal(id);
+  if (!d) return;
   if (!confirm(`Delete "${d.name}" and its files? This can't be undone.`)) return;
-  for (const r of await fileRowsForDeal(id)) await dbDelete("files", r.id);
-  await dbDelete("deals", id);
+  if (!demo) {   // demo is in-memory only — never touch storage
+    for (const r of await fileRowsForDeal(id)) await dbDelete("files", r.id);
+    await dbDelete("deals", id);
+  }
   deals = deals.filter(x => x.id !== id);
   go("pipeline");
   toast("Deal deleted");
@@ -1187,8 +1230,8 @@ document.getElementById("fileImportBackup").addEventListener("change", async e =
     const data = JSON.parse(await file.text());
     if (data.kind !== "dealroom-backup" || !Array.isArray(data.deals)) throw new Error("bad format");
     if (!confirm(`Restore ${data.deals.length} deal(s)? Deals with matching IDs will be overwritten.`)) return;
-    for (const d of data.deals) {
-      d.id = safeId(d.id);
+    for (const raw of data.deals) {
+      const d = normalizeImportedDeal(raw);
       const i = deals.findIndex(x => x.id === d.id);
       if (i >= 0) deals[i] = d; else deals.push(d);
       await putDeal(d);
