@@ -182,6 +182,8 @@
   .toast.show { opacity: 1; }
   body.locked #lockBtn, body.locked #gearBtn { display: none; }
   .gate { max-width: 26rem; margin: 2.5rem auto; }
+  .reliability { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: -.3rem 0 1rem; }
+  .rel-badge { font-size: .74rem; font-weight: 700; border: 1px solid; border-radius: 999px; padding: .12rem .55rem; }
   @media (max-width: 540px) {
     .meter .m-label { flex-basis: 7.5rem; }
     main { padding: .75rem; }
@@ -235,7 +237,9 @@ const CATEGORIES = [
       { id: "price",   name: "Valuation / price",       hint: "1 = priced for perfection vs comps · 5 = attractive price with margin of safety" },
       { id: "downside",name: "Downside protection",     hint: "1 = total-loss exposure · 5 = collateral, preference, or structure that protects capital" },
       { id: "exit",    name: "Liquidity & exit path",   hint: "1 = no plausible exit, or a lock-up longer than your horizon · 5 = clear, realistic exit within your time horizon" },
-      { id: "align",   name: "Alignment of incentives", hint: "1 = heavy fees/carry; sponsor wins even if you lose · 5 = low fee drag; sponsor paid mainly when you do (net of fees)" },
+      { id: "align",   name: "Alignment of incentives", hint: "1 = sponsor wins on structure even if you lose · 5 = sponsor mainly paid when you are (co-invest, carry, clawbacks)" },
+      { id: "fees",    name: "Fees & cost drag",        hint: "1 = layered fees, carry, and promote skim most of the upside · 5 = lean fee load; you keep the bulk of the return net of everything" },
+      { id: "gov",     name: "Conflicts & governance",  hint: "1 = related-party deals, sponsor's other funds paid first, little oversight · 5 = arm's-length, clean governance, real information and control rights" },
     ]},
   { id: "risk", name: "Risk", blurb: "What kills this deal, and how likely is it?",
     criteria: [
@@ -250,6 +254,8 @@ const CATEGORIES = [
       { id: "time",    name: "Time & attention",        hint: "1 = demands time you don't have · 5 = fits your capacity" },
       { id: "comp",    name: "Circle of competence",    hint: "1 = you can't verify the claims · 5 = you understand it well enough to add value" },
       { id: "sleep",   name: "Sleep-at-night factor",   hint: "1 = would keep you up at night · 5 = comfortable holding through bad news" },
+      { id: "lockup",  name: "Liquidity & lock-up fit", hint: "1 = capital locked far beyond your horizon, or gates/capital calls you can't meet · 5 = lock-up and cash-flow timing fit your needs" },
+      { id: "tax",     name: "Tax efficiency & structure", hint: "1 = tax-inefficient structure, messy K-1/UBTI, weak after-tax return · 5 = clean, tax-efficient structure for your situation" },
     ]},
 ];
 
@@ -501,11 +507,29 @@ function gradeFromAnalysis(deal) {
     const b = byCat[cat.id];
     if (b && b.n) { wSum += (b.sum / b.n) * w[cat.id]; wUsed += w[cat.id]; }
   }
-  if (!wUsed) return { score: null, letter: null, flagged, flags, cats: byCat };
+
+  // How solid is this reading? Confidence = evidence quality of the scores;
+  // coverage = how much of the scorecard is actually backed by evidence.
+  // These do NOT move the numeric grade (the prompt already caps unverified
+  // scores at 3) — they tell you how much to trust it.
+  const CONF_W = { verified: 1, partial: 0.5, claim: 0 };
+  const valid = (a.data.suggested_scores || [])
+    .filter(s => CRIT_KEYS.includes(s.criterion) && Number(s.score) >= 1 && Number(s.score) <= 5);
+  let cSum = 0;
+  for (const s of valid) cSum += (CONF_W[s.confidence] ?? 0.5);
+  const confidence = valid.length ? Math.round(cSum / valid.length * 100) : null;
+  const critCoverage = Math.round(valid.length / CRIT_KEYS.length * 100);
+  const catCoverage = Object.keys(byCat).length;   // of CATEGORIES.length (6)
+  let reliability = "Solid";
+  if (catCoverage <= 2 || critCoverage < 30 || (confidence !== null && confidence < 40)) reliability = "Provisional";
+  else if ((confidence !== null && confidence < 70) || critCoverage < 60) reliability = "Moderate";
+
+  const meta = { confidence, critCoverage, catCoverage, catTotal: CATEGORIES.length, reliability };
+  if (!wUsed) return { score: null, letter: null, flagged, flags, cats: byCat, ...meta };
   let score = Math.round(((wSum / wUsed) - 1) / 4 * 100);
   if (flagged && score > 49) score = 49;
   const band = GRADE_BANDS.find(b => score >= b.min);
-  return { score, letter: band.letter, verdict: band.verdict, advice: band.advice, flagged, flags, cats: byCat };
+  return { score, letter: band.letter, verdict: band.verdict, advice: band.advice, flagged, flags, cats: byCat, ...meta };
 }
 
 /* ================= The prompt that teaches his Claude ================= */
@@ -521,8 +545,9 @@ function vettingPrompt(deal) {
   const example = {
     summary: "…",
     key_facts: [{ label: "Revenue (2025)", value: "…" }],
-    suggested_scores: [{ criterion: "people.track", score: 3, rationale: "…" }],
+    suggested_scores: [{ criterion: "people.track", score: 3, confidence: "verified", rationale: "…" }],
     red_flags: [{ id: "guaranteed", reason: "…" }],
+    upside: { potential: "moderate", asymmetry: "favorable", base: "…", bull: "…", bear: "…", note: "…" },
     missing_info: ["…"],
     diligence_questions: ["…"],
     overall_take: "…",
@@ -543,23 +568,23 @@ ${ctx}
 2. Pitch decks are marketing. The sponsor's own claims are not evidence; independently verifiable facts (audited numbers, signed contracts, third-party data) are. Never score above 3 on a criterion supported only by the sponsor's unverified claims.
 3. Projections are claims about the future, not financials. Judge projection realism by the assumptions, not the headline numbers.
 4. Flag every deal-killer red flag actually present and say where it appears. Any single deal-killer means the default answer is pass.
-5. Every score needs a one-line rationale citing specific evidence.
+5. Every score needs a one-line rationale citing specific evidence AND a confidence tag for how solid that evidence is:
+   - **verified** — independently checkable (audited numbers, signed contracts, third-party data, public record).
+   - **partial** — some real support, but incomplete or indirect.
+   - **claim** — the sponsor's word only. A claim-only score must never exceed 3.
+   Be honest here: an accurate reading depends on separating what's proven from what's merely asserted.
 6. If you're missing a document or data point you'd need to score something, tell me exactly what to send and ask me for it — don't guess. I can attach more files and you can revise your scores.
-7. Beyond the scorecard, always address the four things prominent family offices weight heavily — and if the materials don't cover one, say so and add it to what's missing:
-   - **Fees & total cost drag** — management fees, carry, promote, and any hidden load. Judge returns net of all of it, not gross.
-   - **Tax structure & efficiency** — the holding structure, K-1 / UBTI / pass-through complexity, and the after-tax return, not just the headline.
-   - **Liquidity & lock-up** — how long capital is tied up versus my horizon, plus any gates, redemption limits, or capital calls.
-   - **Conflicts of interest** — related-party transactions, the sponsor's other funds or entities, and who else gets paid before I do.
+7. Read the **upside**, not just the downside. Give a realistic base / bull / bear case and say whether the risk/reward is asymmetric (limited downside, real upside) — a family office still needs to know whether a safe deal merely preserves capital or genuinely has legs. Base it on evidence, not the pitch's projections.
 8. Be direct. A polite pass saves more money than an optimistic maybe.
 
-## Scorecard (score 1 = worst, 5 = excellent; use the exact criterion ids)
+## Scorecard (score 1 = worst, 5 = excellent; use the exact criterion ids; tag each with verified/partial/claim)
 ${critText}
 
 ## Deal-killer red flags (use the exact ids)
 ${flagText}
 
 ## What to give me
-A screening report with: a short summary; the key facts you found; a score (1–5) and one-line rationale for each criterion you have evidence for; a short read on fees, tax, liquidity/lock-up, and conflicts (point 7); the red flags present; what's missing; diligence questions to ask the sponsor, verbatim; and an overall take — pursue, dig deeper, or pass, and why.
+A screening report with: a short summary; the key facts you found; a score (1–5), a confidence tag (verified/partial/claim), and a one-line rationale for each criterion you have evidence for; a realistic upside read (base/bull/bear and whether risk/reward is asymmetric); the red flags present; what's missing; diligence questions to ask the sponsor, verbatim; and an overall take — pursue, dig deeper, or pass, and why.
 
 Then, at the very end, output a single fenced code block (\`\`\`json) in exactly this shape, using the exact criterion and red-flag ids above, so I can save your analysis back into my Deal Room app:
 
@@ -582,14 +607,28 @@ function extractAnalysis(raw) {
   } catch {}
   return null;
 }
+const CONF_LEVELS = ["verified", "partial", "claim"];
+function normalizeUpside(u) {
+  if (!u || typeof u !== "object") return null;
+  const pick = (v, allowed) => allowed.includes(v) ? v : null;
+  const out = {
+    potential: pick(u.potential, ["high", "moderate", "low"]),
+    asymmetry: pick(u.asymmetry, ["favorable", "balanced", "poor"]),
+    base: String(u.base || ""), bull: String(u.bull || ""), bear: String(u.bear || ""),
+    note: String(u.note || ""),
+  };
+  if (!out.potential && !out.asymmetry && !out.base && !out.bull && !out.bear && !out.note) return null;
+  return out;
+}
 function normalizeAnalysis(o) {
   const arr = x => Array.isArray(x) ? x : [];
   return {
     summary: String(o.summary || ""),
     key_facts: arr(o.key_facts).filter(x => x && x.label).map(x => ({ label: String(x.label), value: String(x.value ?? "") })),
     suggested_scores: arr(o.suggested_scores).filter(x => x && CRIT_KEYS.includes(x.criterion) && Number(x.score) >= 1 && Number(x.score) <= 5)
-      .map(x => ({ criterion: x.criterion, score: Number(x.score), rationale: String(x.rationale || "") })),
+      .map(x => ({ criterion: x.criterion, score: Number(x.score), confidence: CONF_LEVELS.includes(x.confidence) ? x.confidence : "partial", rationale: String(x.rationale || "") })),
     red_flags: arr(o.red_flags).filter(x => x && RED_FLAGS.some(f => f.id === x.id)).map(x => ({ id: x.id, reason: String(x.reason || "") })),
+    upside: normalizeUpside(o.upside),
     missing_info: arr(o.missing_info).map(String),
     diligence_questions: arr(o.diligence_questions).map(String),
     overall_take: String(o.overall_take || ""),
@@ -854,6 +893,19 @@ function importResult() {
 }
 
 /* ---- report ---- */
+const REL_COLOR = { Solid: "var(--good)", Moderate: "var(--warning)", Provisional: "var(--serious)" };
+function reliabilityStrip(g) {
+  if (g.score === null) return "";
+  const conf = g.confidence !== null ? `Confidence ${g.confidence}%` : "Confidence n/a";
+  const cov = `Coverage ${g.catCoverage}/${g.catTotal} categories (${g.critCoverage}%)`;
+  const note = g.reliability === "Provisional"
+    ? `<p class="hint" style="margin:.3rem 0 0;">Treat this as a provisional read — key parts of the checklist aren't yet backed by evidence. Add more materials to firm it up.</p>`
+    : "";
+  return `<div class="reliability">
+      <span class="rel-badge" style="color:${REL_COLOR[g.reliability]}; border-color:${REL_COLOR[g.reliability]}">Reading: ${g.reliability}</span>
+      <span class="hint">${conf} · ${cov}</span>
+    </div>${note}`;
+}
 function analysisBanner(d) {
   const g = gradeFromAnalysis(d);
   if (!g || (g.score === null && !g.flagged)) return "";
@@ -861,7 +913,26 @@ function analysisBanner(d) {
   return `<div class="verdict">${gradePill(g)}
     <div class="v-text"><b>${g.score !== null ? `${g.score}/100 — ${g.verdict}` : "Red flag raised"}</b>
     <p class="hint">${g.score !== null ? g.advice : ""}</p></div>
-  </div>${flagNote}`;
+  </div>${reliabilityStrip(g)}${flagNote}`;
+}
+function upsideCard(r) {
+  const u = r.upside;
+  if (!u) return "";
+  const potMap = { high: ["High", "var(--good)"], moderate: ["Moderate", "var(--warning)"], low: ["Low", "var(--muted)"] };
+  const asymMap = { favorable: ["Favorable", "var(--good)"], balanced: ["Balanced", "var(--warning)"], poor: ["Poor", "var(--critical)"] };
+  const pill = (label, m) => m ? `<span class="chip" style="color:${m[1]}; border-color:${m[1]}">${label}: ${m[0]}</span>` : "";
+  const scen = (label, txt) => txt ? `<tr><td style="white-space:nowrap;"><b>${label}</b></td><td>${esc(txt)}</td></tr>` : "";
+  const rows = scen("Base", u.base) + scen("Bull", u.bull) + scen("Bear", u.bear);
+  return `<div class="card"><h2>Upside &amp; asymmetry</h2>
+    <div class="row" style="margin-bottom:.6rem;">${pill("Upside", potMap[u.potential])}${pill("Risk/reward", asymMap[u.asymmetry])}</div>
+    ${rows ? `<div style="overflow-x:auto;"><table class="cmp">${rows}</table></div>` : ""}
+    ${u.note ? `<p class="hint" style="margin:.6rem 0 0; white-space:pre-wrap;">${esc(u.note)}</p>` : ""}
+  </div>`;
+}
+const CONF_TAG = { verified: ["verified", "var(--good)"], partial: ["partial", "var(--warning)"], claim: ["claim", "var(--serious)"] };
+function confTag(c) {
+  const m = CONF_TAG[c]; if (!m) return "";
+  return `<span class="chip" style="color:${m[1]}; border-color:${m[1]}" title="Evidence quality">${m[0]}</span>`;
 }
 function critLabel(key) {
   const [catId, critId] = key.split(".");
@@ -883,6 +954,7 @@ function reportCard(d) {
       ${r.key_facts.map(f => `<tr><td style="white-space:nowrap;"><b>${esc(f.label)}</b></td><td>${esc(f.value)}</td></tr>`).join("")}
     </table></div>` : ""}
   </div>`;
+  html += upsideCard(r);
 
   const scores = (r.suggested_scores || []).filter(s => CRIT_KEYS.includes(s.criterion));
   if (g && g.cats && Object.keys(g.cats).length) {
@@ -896,7 +968,7 @@ function reportCard(d) {
   }
   if (scores.length) {
     html += `<div class="card"><h2>Scores &amp; evidence</h2>` +
-      scores.map(s => `<div class="crit"><div class="crit-label">${critLabel(s.criterion)}<span class="crit-hint">${esc(s.rationale)}</span></div><span class="chip">${Number(s.score)}/5</span></div>`).join("") + `</div>`;
+      scores.map(s => `<div class="crit"><div class="crit-label">${critLabel(s.criterion)}<span class="crit-hint">${esc(s.rationale)}</span></div>${confTag(s.confidence)}<span class="chip">${Number(s.score)}/5</span></div>`).join("") + `</div>`;
   }
   const flags = (r.red_flags || []).filter(f => RED_FLAGS.some(x => x.id === f.id));
   if (flags.length) {
