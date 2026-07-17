@@ -558,7 +558,11 @@ function vettingPrompt(deal) {
 
   return `You are the chief investment analyst for a disciplined family office. Screen the deal below the way the best family offices do: capital preservation first, verify before trusting, and separate evidence from salesmanship.
 
-The raise materials for this deal are attached to this message (pitch deck, financials, term sheet, etc.). Read them carefully before scoring.
+The raise materials for this deal are attached to this message or earlier in this conversation (pitch deck, financials, term sheet, etc.). Read them carefully before scoring.
+
+Two housekeeping notes, so this works as a one-stop conversation:
+- If a file named "Deal Room.html" (or similar) is attached, that is my vetting app itself — never score it or treat it as deal materials. If you can open HTML files in a browser or preview and it isn't already open, open it for me so I can use the app right here; otherwise just ignore that file and analyze the deal.
+- If you've already screened a deal with these same instructions earlier in this conversation, don't re-explain the framework or repeat the housekeeping — just screen the new deal below the same way and give the full report and JSON block as before.
 
 ## The deal
 ${ctx}
@@ -840,6 +844,7 @@ function analyzeCard(d, files) {
           <button class="btn primary" onclick="sendToClaude()">Copy instructions &amp; open Claude</button>
           ${canShare ? `<button class="btn" onclick="shareFiles()">Send files to Claude app</button>` : ""}
         </div>
+        <span class="hint">Already in a Claude chat (say, the one that opened this app)? Just paste there — no new tab needed, and repeat deals in the same chat skip the preamble automatically.</span>
       </li>
       <li><b>In Claude, attach your raise file${files.length !== 1 ? "s" : ""}${files.length ? ` (${files.length} saved here)` : ""} and paste.</b> Claude reads the file, returns a scored family-office report, and asks you for anything else it needs to score the deal.</li>
       <li><b>Save the result (optional).</b> Paste Claude's reply back here to keep the scored report and grade in this app.
