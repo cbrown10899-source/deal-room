@@ -96,6 +96,7 @@
   label.field > span { display: block; margin-bottom: .25rem; font-weight: 600; color: var(--ink); }
   input[type=text], input[type=password], select, textarea {
     font: inherit; width: 100%;
+    font-size: 16px;   /* keep ≥16px so iOS Safari doesn't auto-zoom the page on focus */
     background: var(--page); color: var(--ink);
     border: 1px solid var(--border); border-radius: 8px;
     padding: .6rem .7rem;
@@ -673,6 +674,26 @@ function gradeFromAnalysis(deal) {
 
 /* ================= The prompt that teaches his Claude ================= */
 
+// Extra, required diligence for deals where you take on a company's history —
+// buying a business outright or a % stake. Successor liability, debt/liens,
+// and litigation don't show up on a pitch deck but can sink the deal.
+function legalDiligenceBlock(type) {
+  if (type !== "operating" && type !== "equity") return "";
+  const whole = type === "operating";
+  return `
+
+## Required extra diligence for ${whole ? "buying this business" : "taking a stake in this company"} (this deal type demands it)
+A pitch deck won't surface what you inherit. Treat each of these as required, and fold what you find into the red flags, the "missing" list, and the diligence questions — and where the materials don't answer it, tell me the exact document or public filing to pull.
+- **Deal structure & successor liability.** Is this an asset purchase or a stock/equity purchase? A stock/equity buy generally inherits the company's past liabilities — debt, lawsuits, back taxes, warranty and environmental exposure; an asset buy can leave some behind, but not always (successor liability still applies to some claims). State which structure this is and exactly what liabilities would follow ${whole ? "the buyer" : "an equity holder"}.
+- **Debt, liens & guarantees.** All debt on and off the balance sheet, who ranks ahead of ${whole ? "the buyer" : "you"}, UCC-1 filings, tax liens, and any personal guarantees. Check the Secretary of State UCC index and county lien records for the entity and its principals.
+- **Litigation & legal filings.** Pending and past lawsuits, judgments, liens, regulatory or licensing actions, and any bankruptcy — for both the company and its owners. Point me to where to search: federal courts (PACER), state court dockets, the Secretary of State, and for public/registered issuers the SEC/EDGAR litigation and 8-K disclosures.
+- **Ownership, title & encumbrances.** Who actually owns it (full cap table), whether the shares or key assets are pledged/encumbered, and any rights of first refusal, drag/tag-along, or transfer restrictions that bind ${whole ? "a sale" : "your stake"}.
+- **Change-of-control & key contracts.** Leases, customer/supplier contracts, licenses, and employment/non-compete agreements that can terminate, reprice, or need consent on a change of ownership.
+- **Taxes & compliance.** Unpaid or disputed income, payroll, and sales taxes, unfiled returns, and compliance gaps that transfer with the ${whole ? "business" : "company"}.
+- **Clean separation from the seller.** Confirm the business can stand apart from the current owner at closing — no commingled entities or accounts, no key relationships that leave with the seller, and a defined transition${whole ? "" : " and minority protections so you aren't trapped alongside a controlling owner"}.
+`;
+}
+
 function vettingPrompt(deal) {
   const t = DEAL_TYPES.find(t => t.id === deal.type);
   const w = weightsFor(deal);
@@ -731,7 +752,7 @@ ${critText}
 
 ## Deal-killer red flags (use the exact ids)
 ${flagText}
-
+${legalDiligenceBlock(deal.type)}
 ## What to give me
 A screening report with: a short summary; the key facts you found; a score (1–5), a confidence tag (verified/partial/claim), and a one-line rationale for each criterion you have evidence for; a realistic upside read (base/bull/bear and whether risk/reward is asymmetric); the red flags present; what's missing; diligence questions to ask the sponsor, verbatim; and an overall take — pursue, dig deeper, or pass, and why.
 
