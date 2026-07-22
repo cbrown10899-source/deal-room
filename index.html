@@ -718,10 +718,10 @@ function renderGate() {
       <p class="hint" style="margin-top:0;">Your password is that key: it encrypts every deal, note, and file here and never leaves your browser. There's no reset — <b>if you forget it, the data can't be recovered</b> — so keep a backup (Settings → Backup) as your recovery copy.</p>
       <form onsubmit="event.preventDefault(); doSetup();">
         <input type="text" class="pm-user" name="username" value="Deal Room" autocomplete="username" aria-hidden="true" tabindex="-1" readonly>
-        <label class="field"><span>New password</span>
-          <input type="password" id="pw1" name="new-password" autocomplete="new-password" placeholder="Choose a strong password"></label>
+        <label class="field"><span>New password <a href="#" onclick="togglePw('pw1',this);return false;" style="float:right; color:var(--muted); font-weight:400;">show</a></span>
+          <input type="password" id="pw1" name="new-password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Choose a strong password"></label>
         <label class="field"><span>Confirm password</span>
-          <input type="password" id="pw2" autocomplete="new-password" placeholder="Type it again"></label>
+          <input type="password" id="pw2" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Type it again"></label>
         <div id="pw-err"></div>
         <button type="submit" class="btn primary">Encrypt &amp; continue</button>
       </form>
@@ -733,8 +733,8 @@ function renderGate() {
       <p class="hint" style="margin-top:0;">Enter your password to unlock Deal Room.</p>
       <form onsubmit="event.preventDefault(); doUnlock();">
         <input type="text" class="pm-user" name="username" value="Deal Room" autocomplete="username" aria-hidden="true" tabindex="-1" readonly>
-        <label class="field"><span>Password</span>
-          <input type="password" id="pw1" name="password" autocomplete="current-password" placeholder="Password"></label>
+        <label class="field"><span>Password <a href="#" onclick="togglePw('pw1',this);return false;" style="float:right; color:var(--muted); font-weight:400;">show</a></span>
+          <input type="password" id="pw1" name="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Password"></label>
         <div id="pw-err"></div>
         <button type="submit" class="btn primary">Unlock</button>
       </form>
@@ -791,6 +791,12 @@ function exitDemo() {
   document.body.classList.remove("demo");
   renderGate();
 }
+function togglePw(id, link) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.type = el.type === "password" ? "text" : "password";
+  link.textContent = el.type === "password" ? "show" : "hide";
+}
 // Nudge the browser's password manager to save/update the credential (Chrome and
 // Android support this API; Safari relies on the form submit alone). Best-effort.
 function offerCredentialSave(pw) {
@@ -804,6 +810,7 @@ async function doSetup() {
   const p1 = document.getElementById("pw1").value, p2 = document.getElementById("pw2").value;
   const err = document.getElementById("pw-err");
   if (p1.length < 8) { err.innerHTML = gateErr("Use at least 8 characters."); return; }
+  if (p1 !== p1.trim()) { err.innerHTML = gateErr("Remove the space at the start or end — invisible spaces cause \"wrong password\" later."); return; }
   if (p1 !== p2)     { err.innerHTML = gateErr("The two passwords don't match."); return; }
   try {
     await createVault(p1);
@@ -816,17 +823,23 @@ async function doSetup() {
 }
 async function doUnlock() {
   const el = document.getElementById("pw1"), err = document.getElementById("pw-err");
-  const pw = el.value;
-  if (!pw) return;
-  try {
-    await unlockVault(pw);
-    deals = await loadDeals();
-    offerCredentialSave(pw);
-    go("pipeline");
-  } catch {
+  const raw = el.value;
+  if (!raw) return;
+  // Mobile keyboards and autofill sometimes add stray whitespace; try the exact
+  // entry first, then the trimmed variant, so a space never reads as "wrong password".
+  let used = null;
+  for (const pw of new Set([raw, raw.trim()])) {
+    if (!pw) continue;
+    try { await unlockVault(pw); used = pw; break; } catch {}
+  }
+  if (!used) {
     err.innerHTML = gateErr("Wrong password.");
     el.value = ""; el.focus();
+    return;
   }
+  deals = await loadDeals();
+  offerCredentialSave(used);
+  go("pipeline");
 }
 async function lockNow() {
   await flushSaves();      // finish any pending encrypted writes before dropping the key
@@ -1108,6 +1121,9 @@ function detailsCard(d) {
   return `<details class="card">
     <summary>Deal details &amp; notes <span class="hint">(optional — extra context for Claude)</span></summary>
     <div style="margin-top:.8rem;">
+      <label class="field"><span>Deal name</span>
+        <input type="text" value="${esc(d.name)}" oninput="upd('name',this.value)" placeholder="e.g. Riverside Laundromat">
+        <span class="hint">This exact name goes into the instructions you copy for Claude — fix it here if it's wrong.</span></label>
       <label class="field"><span>Ask / check size</span>
         <input type="text" value="${esc(d.ask)}" oninput="upd('ask',this.value)" placeholder="e.g. $50k for 10%"></label>
       <label class="field"><span>Source / who brought it</span>
@@ -1121,7 +1137,12 @@ function detailsCard(d) {
     </div>
   </details>`;
 }
-function upd(field, val) { const d = getDeal(currentDealId); d[field] = val; saveDeal(d); }
+function upd(field, val) {
+  const d = getDeal(currentDealId);
+  if (field === "name") { val = val.trim(); if (!val) return; }   // never save an empty name
+  d[field] = val;
+  saveDeal(d);
+}
 
 /* ---- files handling ---- */
 function dzOver(e) { e.preventDefault(); e.currentTarget.classList.add("drag"); }
@@ -1200,11 +1221,11 @@ function renderSettings() {
       <form onsubmit="event.preventDefault(); doChangePw();">
         <input type="text" class="pm-user" name="username" value="Deal Room" autocomplete="username" aria-hidden="true" tabindex="-1" readonly>
         <label class="field"><span>Current password</span>
-          <input type="password" id="cp-cur" autocomplete="current-password"></label>
-        <label class="field"><span>New password</span>
-          <input type="password" id="cp-new" name="new-password" autocomplete="new-password"></label>
+          <input type="password" id="cp-cur" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+        <label class="field"><span>New password <a href="#" onclick="togglePw('cp-new',this);return false;" style="float:right; color:var(--muted); font-weight:400;">show</a></span>
+          <input type="password" id="cp-new" name="new-password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
         <label class="field"><span>Confirm new password</span>
-          <input type="password" id="cp-new2" autocomplete="new-password"></label>
+          <input type="password" id="cp-new2" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
         <div id="cp-err"></div>
         <button type="submit" class="btn primary">Update password</button>
       </form>
@@ -1252,9 +1273,11 @@ async function doChangePw() {
   const n1 = document.getElementById("cp-new").value, n2 = document.getElementById("cp-new2").value;
   const err = document.getElementById("cp-err");
   if (n1.length < 8) { err.innerHTML = gateErr("New password: at least 8 characters."); return; }
+  if (n1 !== n1.trim()) { err.innerHTML = gateErr("Remove the space at the start or end of the new password."); return; }
   if (n1 !== n2)     { err.innerHTML = gateErr("New passwords don't match."); return; }
   try {
-    await changePassword(cur, n1);
+    try { await changePassword(cur, n1); }
+    catch (e) { if (cur !== cur.trim() && cur.trim()) await changePassword(cur.trim(), n1); else throw e; }
     err.innerHTML = "";
     ["cp-cur", "cp-new", "cp-new2"].forEach(id => document.getElementById(id).value = "");
     offerCredentialSave(n1);
