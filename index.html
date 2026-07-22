@@ -936,6 +936,7 @@ async function startOver() {
   await tx("files", "readwrite", s => s.clear());
   await tx("meta",  "readwrite", s => s.clear());
   masterKey = null; vaultExists = false;
+  deviceTrusted = false; passkeyEnrolled = false;   // meta was just cleared — flags must follow
   deals = []; currentDealId = null; view = "pipeline";
   renderGate();
   toast("Erased — set a new password to start fresh");
@@ -953,6 +954,7 @@ function startDemo() {
 }
 function exitDemo() {
   demo = false;
+  masterKey = null;   // exit always lands on the gate; never carry an unlocked key out of demo
   deals = [];
   currentDealId = null; view = "pipeline";
   document.body.classList.remove("demo");
