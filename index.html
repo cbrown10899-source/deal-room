@@ -389,6 +389,88 @@ async function changePassword(currentPw, newPw) {
   masterKey = mk;
 }
 
+/* ---- unlock without typing: trusted device + passkey (Face ID / fingerprint) ----
+   Trusted device stores the master CryptoKey itself in IndexedDB so the app opens
+   without the password; protection on that device becomes the phone/computer lock.
+   Passkey wraps the master key with a secret only released after biometric check
+   (WebAuthn PRF). The password always remains a fallback; Lock clears device trust. */
+async function trustDevice() {
+  try {
+    await tx("meta", "readwrite", s => s.put({ k: "trusted", key: masterKey, at: Date.now() }));
+    deviceTrusted = true;
+  } catch { /* storage refused the key — stay password-only */ }
+}
+async function untrustDevice() {
+  await dbDelete("meta", "trusted");
+  deviceTrusted = false;
+}
+async function enrollPasskey() {
+  if (!masterKey) return;
+  if (!window.PublicKeyCredential || !navigator.credentials || !location.hostname) {
+    toast("Passkeys aren't supported in this browser"); return;
+  }
+  try {
+    const prfSalt = randBytes(32);
+    const cred = await navigator.credentials.create({ publicKey: {
+      rp: { name: "Deal Room", id: location.hostname },
+      user: { id: randBytes(16), name: "Deal Room vault", displayName: "Deal Room vault" },
+      challenge: randBytes(32),
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "preferred" },
+      extensions: { prf: { eval: { first: prfSalt } } },
+    }});
+    const ext = cred.getClientExtensionResults();
+    let prfOut = ext.prf && ext.prf.results && ext.prf.results.first;
+    if (!prfOut && !(ext.prf && ext.prf.enabled)) {
+      toast("This device's passkeys can't unlock a vault (no PRF support)"); return;
+    }
+    if (!prfOut) {
+      const assertion = await navigator.credentials.get({ publicKey: {
+        challenge: randBytes(32),
+        allowCredentials: [{ type: "public-key", id: cred.rawId }],
+        userVerification: "required",
+        extensions: { prf: { eval: { first: prfSalt } } },
+      }});
+      prfOut = assertion.getClientExtensionResults().prf?.results?.first;
+    }
+    if (!prfOut) { toast("Couldn't finish Face ID setup — use the password for now"); return; }
+    const kek = await crypto.subtle.importKey("raw", prfOut, { name: "AES-GCM" }, false, ["wrapKey"]);
+    const iv = randBytes(12);
+    const wrapped = await crypto.subtle.wrapKey("raw", masterKey, kek, { name: "AES-GCM", iv });
+    await tx("meta", "readwrite", s => s.put({ k: "passkey", credId: cred.rawId, prfSalt, wrapped, iv }));
+    passkeyEnrolled = true;
+    renderSettings();
+    toast("Face ID / passkey unlock is set up");
+  } catch { toast("Face ID setup was cancelled or isn't available here"); }
+}
+async function removePasskey() {
+  await dbDelete("meta", "passkey");
+  passkeyEnrolled = false;
+  renderSettings();
+  toast("Face ID / passkey unlock removed");
+}
+async function passkeyUnlock() {
+  const rec = await tx("meta", "readonly", s => s.get("passkey"));
+  if (!rec) return;
+  try {
+    const assertion = await navigator.credentials.get({ publicKey: {
+      challenge: randBytes(32),
+      allowCredentials: [{ type: "public-key", id: rec.credId }],
+      userVerification: "required",
+      extensions: { prf: { eval: { first: rec.prfSalt } } },
+    }});
+    const prfOut = assertion.getClientExtensionResults().prf?.results?.first;
+    if (!prfOut) throw new Error("no prf");
+    const kek = await crypto.subtle.importKey("raw", prfOut, { name: "AES-GCM" }, false, ["unwrapKey"]);
+    masterKey = await crypto.subtle.unwrapKey("raw", rec.wrapped, kek, { name: "AES-GCM", iv: rec.iv },
+      { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+    deals = await loadDeals();
+    const box = document.getElementById("trust-device");
+    if (box && box.checked) await trustDevice();
+    go("pipeline");
+  } catch { toast("Face ID unlock didn't work — use your password"); }
+}
+
 async function encObj(obj) {
   const iv = randBytes(12);
   const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, masterKey, te.encode(JSON.stringify(obj)));
@@ -458,6 +540,8 @@ let view = "pipeline";
 let currentDealId = null;
 let saveTimer = null;
 let demo = false;   // in-memory sample-data mode: no password, nothing persisted
+let deviceTrusted = false;    // a "keep me unlocked" copy of the master key is stored on this device
+let passkeyEnrolled = false;  // a passkey-wrapped copy of the master key exists (Face ID / fingerprint unlock)
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -731,10 +815,14 @@ function renderGate() {
     app.innerHTML = `<div class="card gate">
       <h1 style="margin-top:0;">Locked</h1>
       <p class="hint" style="margin-top:0;">Enter your password to unlock Deal Room.</p>
+      ${passkeyEnrolled ? `<button type="button" class="btn" style="width:100%; margin-bottom:.8rem;" onclick="passkeyUnlock()">Unlock with Face ID / passkey</button>` : ""}
       <form onsubmit="event.preventDefault(); doUnlock();">
         <input type="text" class="pm-user" name="username" value="Deal Room" autocomplete="username" aria-hidden="true" tabindex="-1" readonly>
         <label class="field"><span>Password <a href="#" onclick="togglePw('pw1',this);return false;" style="float:right; color:var(--muted); font-weight:400;">show</a></span>
           <input type="password" id="pw1" name="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Password"></label>
+        <label style="display:flex; gap:.5rem; align-items:center; font-size:.85rem; color:var(--ink-2); margin:.2rem 0 .7rem; cursor:pointer;">
+          <input type="checkbox" id="trust-device" style="width:auto;"> Keep me unlocked on this device
+        </label>
         <div id="pw-err"></div>
         <button type="submit" class="btn primary">Unlock</button>
       </form>
@@ -838,11 +926,14 @@ async function doUnlock() {
     return;
   }
   deals = await loadDeals();
+  const box = document.getElementById("trust-device");
+  if (box && box.checked) await trustDevice();
   offerCredentialSave(used);
   go("pipeline");
 }
 async function lockNow() {
   await flushSaves();      // finish any pending encrypted writes before dropping the key
+  await untrustDevice();   // locking means "require the password again" — on this device too
   masterKey = null;
   deals = []; currentDealId = null; view = "pipeline";
   renderGate();
@@ -1217,6 +1308,14 @@ function renderSettings() {
       <div class="row" style="margin-bottom:1rem;">
         <button class="btn" onclick="lockNow()">🔒 Lock now</button>
       </div>
+      <h3>Unlock without typing</h3>
+      <p class="hint" style="margin-top:0;">Stay unlocked on this device: <b>${deviceTrusted ? "on" : "off"}</b>${deviceTrusted ? " — tap Lock to turn it off and require the password again." : " — tick “Keep me unlocked on this device” next time you unlock."}</p>
+      <div class="row" style="margin-bottom:.4rem;">
+        ${passkeyEnrolled
+          ? `<button class="btn" onclick="removePasskey()">Remove Face ID / passkey unlock</button>`
+          : `<button class="btn" onclick="enrollPasskey()">Set up Face ID / passkey unlock</button>`}
+      </div>
+      <p class="hint">Face ID / passkey unlocks the vault with your face or fingerprint instead of the password (needs a recent phone or browser). Your password always works as the fallback. Either shortcut means the data is only as protected as this device's own lock.</p>
       <h3>Change password</h3>
       <form onsubmit="event.preventDefault(); doChangePw();">
         <input type="text" class="pm-user" name="username" value="Deal Room" autocomplete="username" aria-hidden="true" tabindex="-1" readonly>
@@ -1361,7 +1460,16 @@ function toast(msg) {
   try {
     _db = await openDB();
     vaultExists = !!(await getVault());
+    passkeyEnrolled = !!(await tx("meta", "readonly", s => s.get("passkey")));
+    const trusted = await tx("meta", "readonly", s => s.get("trusted"));
     if (DEMO_MODE) startDemo();   // ?demo=1 opens straight into the sample data
+    else if (trusted && trusted.key && vaultExists) {
+      // "Keep me unlocked on this device" — open straight into the pipeline
+      masterKey = trusted.key;
+      deviceTrusted = true;
+      deals = await loadDeals();
+      render();
+    }
     else renderGate();            // otherwise set up a password on first run, or ask to unlock
   } catch (e) {
     app.innerHTML = `<div class="card">
