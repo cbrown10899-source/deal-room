@@ -185,6 +185,18 @@
   body.demo #exitDemoBtn { display: inline-block; }
   body.demo #lockBtn, body.demo #gearBtn { display: none; }
   .demo-banner { background: color-mix(in srgb, var(--series-1) 12%, transparent); border: 1px solid var(--series-1); border-radius: 12px; padding: .7rem .9rem; margin-bottom: 1rem; font-size: .85rem; }
+  .demo-cta { text-align: center; border-color: var(--series-1); }
+  .demo-cta h2 { margin: 0 0 .15rem; }
+  .demo-cta .dc-sub { color: var(--muted); font-size: .82rem; margin: 0 0 .8rem; }
+  .demo-preview { text-align: left; border: 1px solid var(--hairline); border-radius: 10px; padding: .1rem .7rem; margin-bottom: .9rem; background: var(--page); }
+  .dp-head { font-size: .72rem; color: var(--muted); font-weight: 600; letter-spacing: .02em; padding: .5rem 0 .35rem; border-bottom: 1px solid var(--hairline); }
+  .dp-row { display: flex; align-items: center; gap: .5rem; padding: .48rem 0; border-bottom: 1px solid var(--hairline); }
+  .dp-row:last-child { border-bottom: none; }
+  .dp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; font-weight: 600; }
+  .dp-type { display: block; font-size: .7rem; color: var(--muted); font-weight: 400; }
+  .dp-pill { flex: none; width: 1.55rem; height: 1.55rem; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .82rem; color: #fff; }
+  .dp-pill.g-A { background: var(--good); } .dp-pill.g-B { background: var(--warning); color: #0b0b0b; }
+  .dp-pill.g-C { background: var(--serious); color: #0b0b0b; } .dp-pill.g-D, .dp-pill.g-F { background: var(--critical); }
   .gate { max-width: 26rem; margin: 2.5rem auto; }
   /* present for password managers, invisible to people (display:none would be ignored by managers) */
   .pm-user { position: absolute; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -785,18 +797,28 @@ function render() {
 
 /* ---- lock / unlock / first-run setup ---- */
 const gateErr = m => `<div class="flagbox" style="margin:.2rem 0 .6rem;"><b>${esc(m)}</b></div>`;
-const demoLink = `<p class="hint" style="margin:.9rem 0 0; text-align:center;">New here? <a href="#" onclick="startDemo();return false;" style="color:var(--series-1);">Explore a live demo</a> — five sample deals, no password, nothing saved.</p>`;
+const demoCTA = `<div class="card gate demo-cta">
+  <h2>See it in action</h2>
+  <p class="dc-sub">Five real sample deals — no password, nothing saved.</p>
+  <div class="demo-preview" aria-hidden="true">
+    <div class="dp-head">PIPELINE — SCREENING</div>
+    <div class="dp-row"><span class="dp-name">Oakline 24-Unit Apartments<span class="dp-type">Real estate</span></span><span class="dp-pill g-B">B</span></div>
+    <div class="dp-row"><span class="dp-name">GadgetLoop DTC<span class="dp-type">Startup / angel</span></span><span class="dp-pill g-C">C</span></div>
+    <div class="dp-row"><span class="dp-name">Meridian Opportunity Fund II<span class="dp-type">Fund / syndicate</span></span><span class="dp-pill g-D">D</span></div>
+    <div class="dp-row"><span class="dp-name">NovaAI Seed Round<span class="dp-type">Startup · red flag</span></span><span class="dp-pill g-F">F</span></div>
+  </div>
+  <button type="button" class="btn primary" style="width:100%;" onclick="startDemo()">Explore the live demo</button>
+</div>`;
 function renderGate() {
   document.body.classList.remove("demo");
   document.body.classList.add("locked");
   if (!cryptoOK()) {
-    app.innerHTML = `<div class="card gate"><h1 style="margin-top:0;">Encryption unavailable</h1>
-      <p class="hint">Deal Room encrypts your data with the browser's Web Crypto API, which needs a secure context. Open this file directly (a <code>file://</code> path) or host it over <b>https</b> — a plain <code>http://</code> address won't work.</p>
-      ${demoLink}</div>`;
+    app.innerHTML = demoCTA + `<div class="card gate"><h1 style="margin-top:0;">Encryption unavailable</h1>
+      <p class="hint">Deal Room encrypts your data with the browser's Web Crypto API, which needs a secure context. Open this file directly (a <code>file://</code> path) or host it over <b>https</b> — a plain <code>http://</code> address won't work.</p></div>`;
     return;
   }
   if (!vaultExists) {
-    app.innerHTML = `<div class="card gate">
+    app.innerHTML = demoCTA + `<div class="card gate">
       <h1 style="margin-top:0;">Set a password</h1>
       <p style="margin:.1rem 0 .7rem; font-size:.92rem;">Think of it as a <b>cold wallet for deal vetting</b> — your deals sit locked on this device, under a key only you hold. No server, no account, no company that can see them.</p>
       <p class="hint" style="margin-top:0;">Your password is that key: it encrypts every deal, note, and file here and never leaves your browser. There's no reset — <b>if you forget it, the data can't be recovered</b> — so keep a backup (Settings → Backup) as your recovery copy.</p>
@@ -809,7 +831,6 @@ function renderGate() {
         <div id="pw-err"></div>
         <button type="submit" class="btn primary">Encrypt &amp; continue</button>
       </form>
-      ${demoLink}
     </div>`;
   } else {
     app.innerHTML = `<div class="card gate">
@@ -827,8 +848,7 @@ function renderGate() {
         <button type="submit" class="btn primary">Unlock</button>
       </form>
       <p class="hint" style="margin:.8rem 0 0; text-align:center;"><a href="#" onclick="renderForgot();return false;" style="color:var(--muted);">Forgot your password?</a></p>
-      ${demoLink}
-    </div>`;
+    </div>` + demoCTA;
   }
   const el = document.getElementById("pw1");
   if (el) el.focus();
