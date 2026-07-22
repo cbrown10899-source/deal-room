@@ -573,10 +573,21 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 // uid charset; anything else (a crafted file) is replaced with a fresh local id.
 const safeId = id => (typeof id === "string" && /^[a-z0-9]+$/i.test(id)) ? id : uid();
 
+// Accept only http(s) links; bare domains get https://. Blocks javascript:/data: etc.
+// so a stored link can never become a script href. Returns the normalized URL or null.
+function safeUrl(s) {
+  s = String(s ?? "").trim();
+  if (!s) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = "https://" + s;
+  try { const u = new URL(s); return (u.protocol === "http:" || u.protocol === "https:") ? u.href : null; }
+  catch { return null; }
+}
+
 function newDealObj(name, type) {
   return {
     id: uid(), name, type, stage: "Screening",
     ask: "", source: "", summary: "", callNotes: "", notes: "",
+    links: [],
     analysis: null,
     createdAt: Date.now(), updatedAt: Date.now(),
   };
@@ -680,13 +691,19 @@ function vettingPrompt(deal) {
     diligence_questions: ["…"],
     overall_take: "…",
   };
+  const links = Array.isArray(deal.links) ? deal.links.filter(Boolean) : [];
   let ctx = `Name: ${deal.name}\nType: ${t ? t.label : deal.type}\nAsk / check size: ${deal.ask || "(not specified)"}\nSource: ${deal.source || "(not specified)"}\nSummary: ${deal.summary || "(none)"}`;
+  if (links.length) ctx += `\n\nLinks to open and read as primary sources (open every one before scoring — SEC/EDGAR filings and audited numbers there outrank anything the sponsor says):\n${links.map(u => `- ${u}`).join("\n")}`;
   if (deal.callNotes) ctx += `\n\nCall notes (what the sponsor claimed):\n${deal.callNotes}`;
   if (deal.notes) ctx += `\n\nMy notes:\n${deal.notes}`;
 
+  const sourcesLine = links.length
+    ? `The materials for this deal may be attached to this message or earlier in this conversation, and/or provided as links in "The deal" below (a website, an SEC/EDGAR filing, a data room). Open and read every link, and any attached files, before scoring.`
+    : `The raise materials for this deal are attached to this message or earlier in this conversation (pitch deck, financials, term sheet, etc.). Read them carefully before scoring.`;
+
   return `You are the chief investment analyst for a disciplined family office. Screen the deal below the way the best family offices do: capital preservation first, verify before trusting, and separate evidence from salesmanship.
 
-The raise materials for this deal are attached to this message or earlier in this conversation (pitch deck, financials, term sheet, etc.). Read them carefully before scoring.
+${sourcesLine}
 
 Two housekeeping notes, so this works as a one-stop conversation:
 - If a file named "Deal Room.html" (or similar) is attached, that is my vetting app itself — never score it or treat it as deal materials. If you can open HTML files in a browser or preview and it isn't already open, open it for me so I can use the app right here; otherwise just ignore that file and analyze the deal.
@@ -788,6 +805,7 @@ function normalizeImportedDeal(d) {
     stage: normalizeStage(o.stage),
     ask: String(o.ask ?? ""), source: String(o.source ?? ""),
     summary: String(o.summary ?? ""), callNotes: String(o.callNotes ?? ""), notes: String(o.notes ?? ""),
+    links: (Array.isArray(o.links) ? o.links : []).map(safeUrl).filter(Boolean),
     analysis: (a && typeof a === "object" && a.data)
       ? { at: Number(a.at) || now, source: String(a.source || "claude"), data: normalizeAnalysis(a.data) }
       : null,
@@ -1063,7 +1081,7 @@ async function renderDeal() {
     </div>
     <h1 style="margin-bottom:.2rem;">${esc(d.name)}</h1>
     <p class="hint" style="margin-top:0;">${esc(t ? t.label : "")}</p>
-    ${filesCard(files)}
+    ${filesCard(d, files)}
     ${analyzeCard(d, files)}
     ${reportCard(d)}
     ${detailsCard(d)}
@@ -1073,9 +1091,10 @@ async function renderDeal() {
 }
 function setStage(s) { const d = getDeal(currentDealId); d.stage = s; saveDeal(d); }
 
-function filesCard(files) {
+function filesCard(d, files) {
+  const links = (d && d.links) || [];
   return `<div class="card">
-    <h2>1. Add the raise files</h2>
+    <h2>1. Add the deal materials</h2>
     <div class="dropzone" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="dzDrop(event)" onclick="document.getElementById('fileAttach').click()">
       <span class="dz-big">Drop the deal files here</span>
       <span class="hint">or tap to choose — pitch deck, financials, term sheet (PDF, images, spreadsheets, anything)</span>
@@ -1086,7 +1105,19 @@ function filesCard(files) {
         <span class="f-meta">${fmtSize(f.size)}</span>
         <button class="btn small" onclick="openFile('${f.id}')">Open</button>
         <button class="btn small ghost" onclick="removeFile('${f.id}')" title="Remove">✕</button>
-      </div>`).join("") : `<p class="hint" style="margin-bottom:0;">No files yet. You can also run the analysis on notes alone, but the file is what makes it sharp.</p>`}
+      </div>`).join("") : ""}
+    <div style="margin-top:.8rem;">
+      <span class="hint" style="display:block; margin-bottom:.4rem;">No file? <b>Paste a link instead</b> — a company website, an SEC / EDGAR filing, or a shared data-room link. Your Claude opens and reads it.</span>
+      ${links.map((u, i) => `
+        <div class="file-row">
+          <a class="f-name" href="${esc(u)}" target="_blank" rel="noopener noreferrer" style="color:var(--series-1); text-decoration:none;">${esc(u)}</a>
+          <button class="btn small ghost" onclick="removeLink(${i})" title="Remove">✕</button>
+        </div>`).join("")}
+      <div class="row" style="margin-top:.45rem; gap:.4rem; flex-wrap:nowrap;">
+        <input type="text" id="link-input" placeholder="example.com or sec.gov/…" autocomplete="off" autocapitalize="none" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();addLink();}" style="flex:1;">
+        <button class="btn" onclick="addLink()">Add link</button>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -1103,7 +1134,7 @@ function analyzeCard(d, files) {
         </div>
         <span class="hint">Already in a Claude chat (say, the one that opened this app)? Just paste there — no new tab needed, and repeat deals in the same chat skip the preamble automatically.</span>
       </li>
-      <li><b>In Claude, attach your raise file${files.length !== 1 ? "s" : ""}${files.length ? ` (${files.length} saved here)` : ""} and paste.</b> Claude reads the file, returns a scored family-office report, and ends with a green “<b>Save this in Deal Room</b>” note above a copyable code block.</li>
+      <li><b>${files.length ? `In Claude, attach your raise file${files.length !== 1 ? "s" : ""} (${files.length} saved here) and paste.` : ((d.links && d.links.length) ? `In Claude, just paste — your link${d.links.length !== 1 ? "s are" : " is"} in the instructions and Claude opens ${d.links.length !== 1 ? "them" : "it"}.` : `In Claude, paste — and attach any file you have.`)}</b> Claude reads the materials, returns a scored family-office report, and ends with a green “<b>Save this in Deal Room</b>” note above a copyable code block.</li>
       <li><b>Copy that last code block and paste it here.</b> In Claude, tap the copy button on the final code block, come back, paste, and Save — the scored report and grade land in this app. (Pasting Claude's whole reply works too.)
         <textarea id="paste-result" placeholder="Paste the code block Claude marked for Deal Room…"></textarea>
         <div class="row" style="margin-top:.4rem;"><button class="btn primary" onclick="importResult()">Save result</button></div>
@@ -1329,6 +1360,27 @@ async function openFile(id) {
 async function removeFile(id) {
   if (!confirm("Remove this file?")) return;
   await dbDelete("files", id);
+  renderDeal();
+}
+function addLink() {
+  const d = getDeal(currentDealId);
+  if (!d) return;
+  const input = document.getElementById("link-input");
+  const url = safeUrl(input && input.value);
+  if (!url) { toast("That doesn't look like a web link"); return; }
+  if (!Array.isArray(d.links)) d.links = [];
+  if (d.links.includes(url)) { toast("That link's already added"); input.value = ""; return; }
+  d.links.push(url);
+  saveDeal(d, true);
+  renderDeal();
+  document.getElementById("link-input")?.focus();
+  toast("Link added");
+}
+function removeLink(i) {
+  const d = getDeal(currentDealId);
+  if (!d || !Array.isArray(d.links)) return;
+  d.links.splice(i, 1);
+  saveDeal(d, true);
   renderDeal();
 }
 async function deleteDeal(id) {
