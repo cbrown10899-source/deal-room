@@ -197,6 +197,11 @@
   .dp-pill { flex: none; width: 1.55rem; height: 1.55rem; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .82rem; color: #fff; }
   .dp-pill.g-A { background: var(--good); } .dp-pill.g-B { background: var(--warning); color: #0b0b0b; }
   .dp-pill.g-C { background: var(--serious); color: #0b0b0b; } .dp-pill.g-D, .dp-pill.g-F { background: var(--critical); }
+  .grade-key { margin: 0 0 1rem; }
+  .grade-key summary { cursor: pointer; color: var(--series-1); font-size: .82rem; list-style: none; }
+  .grade-key summary::-webkit-details-marker { display: none; }
+  .gk-row { display: flex; align-items: center; gap: .55rem; padding: .3rem 0; font-size: .85rem; }
+  .gk-row .dp-pill { width: 1.4rem; height: 1.4rem; font-size: .78rem; }
   .gate { max-width: 26rem; margin: 2.5rem auto; }
   /* present for password managers, invisible to people (display:none would be ignored by managers) */
   .pm-user { position: absolute; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -299,12 +304,14 @@ const RED_FLAGS = [
 
 const STAGES = ["Screening", "Diligence", "Passed", "Invested"];
 
+// verdict = headline label; mean = plain one-liner for the grade legend. "Walk away"
+// (not "Pass") is deliberate: a low grade means decline the deal, not "passed the test".
 const GRADE_BANDS = [
-  { min: 80, letter: "A", verdict: "Strong",   advice: "Proceed to full diligence — verify the claims behind the high scores." },
-  { min: 65, letter: "B", verdict: "Promising", advice: "Worth diligence — focus on the weakest categories." },
-  { min: 50, letter: "C", verdict: "Mixed",    advice: "Only proceed if the top risks can be resolved on paper first." },
-  { min: 35, letter: "D", verdict: "Weak",     advice: "Likely pass — the burden of proof is on the deal now." },
-  { min: 0,  letter: "F", verdict: "Pass",     advice: "Walk away. Capital preservation comes first." },
+  { min: 80, letter: "A", verdict: "Strong",    mean: "Invest-worthy — do full diligence", advice: "Proceed to full diligence — verify the claims behind the high scores." },
+  { min: 65, letter: "B", verdict: "Promising", mean: "Promising — worth a closer look",   advice: "Worth diligence — focus on the weakest categories." },
+  { min: 50, letter: "C", verdict: "Mixed",     mean: "Mixed — proceed only with caution", advice: "Only proceed if the top risks can be resolved on paper first." },
+  { min: 35, letter: "D", verdict: "Weak",      mean: "Weak — probably a no",              advice: "Probably a no — the burden of proof is now on the deal." },
+  { min: 0,  letter: "F", verdict: "Walk away", mean: "Walk away — decline the deal",       advice: "Walk away — decline the deal. Capital preservation comes first." },
 ];
 
 const CRIT_KEYS = CATEGORIES.flatMap(c => c.criteria.map(x => c.id + "." + x.id));
@@ -1148,14 +1155,20 @@ function reliabilityStrip(g) {
       <span class="hint">${conf} · ${cov}</span>
     </div>${note}`;
 }
+function gradeKey() {
+  return `<details class="grade-key"><summary>What does this grade mean?</summary>
+    ${GRADE_BANDS.map(b => `<div class="gk-row"><span class="dp-pill g-${b.letter}">${b.letter}</span> <span>${b.min}+ · ${esc(b.mean)}</span></div>`).join("")}
+    <p class="hint" style="margin:.5rem 0 0;">Green means worth pursuing, red means stay away. In deal-vetting, to <b>“pass”</b> means to <b>decline</b> a deal — a low grade is the deal failing the checklist, never “passing” it.</p>
+  </details>`;
+}
 function analysisBanner(d) {
   const g = gradeFromAnalysis(d);
   if (!g || (g.score === null && !g.flagged)) return "";
-  const flagNote = g.flagged ? `<div class="flagbox"><b>⚠ Deal-killer flagged.</b> Grade capped at 49 — the family-office default on a red flag is <b>pass</b>, no matter how good the story is.</div>` : "";
+  const flagNote = g.flagged ? `<div class="flagbox"><b>⚠ Deal-killer flagged.</b> Grade capped at 49 — the family-office default on a red flag is to <b>walk away</b>, no matter how good the story is.</div>` : "";
   return `<div class="verdict">${gradePill(g)}
     <div class="v-text"><b>${g.score !== null ? `${g.score}/100 — ${g.verdict}` : "Red flag raised"}</b>
     <p class="hint">${g.score !== null ? g.advice : ""}</p></div>
-  </div>${reliabilityStrip(g)}${flagNote}`;
+  </div>${reliabilityStrip(g)}${flagNote}${gradeKey()}`;
 }
 function upsideCard(r) {
   const u = r.upside;
